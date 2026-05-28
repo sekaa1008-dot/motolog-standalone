@@ -483,7 +483,11 @@ function renderForm() {
                     <strong>${escapeHtml(item.name)}</strong>
                     <span>${money(item.quantity)}${escapeHtml(item.unit || "개")} 보유 · ${escapeHtml(item.location || "위치 미지정")}</span>
                   </div>
-                  <input class="input part-qty" name="part-${item.id}" inputmode="numeric" placeholder="0" value="${used?.quantity ?? ""}" aria-label="${escapeHtml(item.name)} 사용 수량" />
+                  <div class="part-stepper" aria-label="${escapeHtml(item.name)} 사용 수량">
+                    <button type="button" class="step-button" data-part-step="${item.id}" data-step="-1">−</button>
+                    <input class="input part-qty" name="part-${item.id}" inputmode="numeric" placeholder="0" value="${used?.quantity ?? ""}" aria-label="${escapeHtml(item.name)} 사용 수량" />
+                    <button type="button" class="step-button" data-part-step="${item.id}" data-step="1">+</button>
+                  </div>
                 </div>
               `;
             }).join("") : `<div class="empty">등록된 재고가 없습니다. 재고 메뉴에서 품목을 추가하세요.</div>`}
@@ -982,6 +986,16 @@ function attachEvents() {
       }
       saveTemplates(getTemplates().map((item) => item.id === template.id ? { ...item, usage: (item.usage ?? 0) + 1 } : item));
       showToast("템플릿을 적용했습니다.");
+    });
+  });
+
+  document.querySelectorAll("[data-part-step]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const input = document.querySelector(`[name="part-${button.dataset.partStep}"]`);
+      if (!input) return;
+      const current = Math.max(0, numberFromInput(input.value) || 0);
+      const next = Math.max(0, current + Number(button.dataset.step || 0));
+      input.value = next ? String(next) : "";
     });
   });
 

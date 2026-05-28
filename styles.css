@@ -424,11 +424,11 @@ button {
   border: 1px solid var(--line);
   border-radius: 13px;
   background: var(--card);
-  padding: 10px;
+  padding: 12px;
   display: grid;
-  grid-template-columns: 1fr 74px;
+  grid-template-columns: 1fr;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
 }
 
 .inventory-pick strong,
@@ -448,9 +448,36 @@ button {
 }
 
 .part-qty {
-  min-height: 42px;
-  padding: 10px;
+  min-height: 46px;
+  padding: 10px 6px;
   text-align: center;
+  border-radius: 0;
+  border-left: 0;
+  border-right: 0;
+}
+
+.part-stepper {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 52px 1fr 52px;
+  align-items: stretch;
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  overflow: hidden;
+  background: var(--card-soft);
+}
+
+.step-button {
+  min-height: 46px;
+  border: 0;
+  background: rgba(255,255,255,.05);
+  color: var(--text);
+  font-size: 22px;
+  font-weight: 900;
+}
+
+.step-button:active {
+  background: var(--primary-soft);
 }
 
 .stock-status,
