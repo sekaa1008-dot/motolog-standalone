@@ -381,6 +381,10 @@ button {
   gap: 8px;
 }
 
+.plate-actions.wide {
+  grid-template-columns: 1fr;
+}
+
 .plate-preview {
   display: none;
   border: 1px solid var(--line);
