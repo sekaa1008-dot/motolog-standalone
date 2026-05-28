@@ -96,6 +96,7 @@ function getInventory() {
     {
       id: 1,
       name: "미쉐린 130/70-13 타이어",
+      keywords: "타이어 교체, 미쉐린, 130/70-13",
       model: "PCX, NMAX 등 직접 확인",
       location: "A-1",
       quantity: 2,
@@ -105,6 +106,7 @@ function getInventory() {
     {
       id: 2,
       name: "엔진오일 1L",
+      keywords: "엔진오일, 오일 교체",
       model: "스쿠터 공용",
       location: "B-1",
       quantity: 8,
@@ -164,6 +166,42 @@ function stockWarningText(items = getInventory()) {
   const low = items.filter((item) => Number(item.quantity || 0) <= Number(item.minQuantity || 0));
   if (!low.length) return "";
   return ` 재고 경고: ${low.slice(0, 2).map((item) => item.name).join(", ")}`;
+}
+
+function normalizeText(value) {
+  return String(value || "").toLowerCase().replace(/\s/g, "");
+}
+
+function inventoryMatchKeywords(item) {
+  const explicit = String(item.keywords || "")
+    .split(",")
+    .map((keyword) => normalizeText(keyword))
+    .filter(Boolean);
+  const nameWords = String(item.name || "")
+    .split(/[\s,/()-]+/)
+    .map((word) => normalizeText(word))
+    .filter((word) => word.length >= 2 && Number.isNaN(Number(word)));
+  return [...new Set([...explicit, ...nameWords])];
+}
+
+function suggestedPartsForText(text, inventory = getInventory()) {
+  const normalized = normalizeText(text);
+  if (!/(교체|교환|장착|사용|투입|보충)/.test(normalized)) return [];
+  return inventory.filter((item) => inventoryMatchKeywords(item).some((keyword) => normalized.includes(keyword)));
+}
+
+function autoFillPartsFromWorkText(text, options = {}) {
+  const matches = suggestedPartsForText(text);
+  let applied = 0;
+  for (const item of matches) {
+    const input = document.querySelector(`[name="part-${item.id}"]`);
+    if (!input || numberFromInput(input.value) > 0) continue;
+    input.value = "1";
+    input.dataset.autoFilled = "true";
+    applied += 1;
+  }
+  if (applied && !options.silent) showToast(`재고 ${applied}개 품목을 자동 입력했습니다.`);
+  return applied;
 }
 
 function showToast(message) {
@@ -474,6 +512,7 @@ function renderForm() {
         </div>
         <div class="field">
           <label>사용 부품 / 재고 차감</label>
+          <p class="field-help">작업 내용에 재고 키워드와 교체/장착/사용/보충이 함께 있으면 1개가 자동 입력됩니다.</p>
           <div class="inventory-pick-list">
             ${inventory.length ? inventory.map((item) => {
               const used = usedParts.get(item.id);
@@ -633,6 +672,10 @@ function renderInventory() {
           <input class="input" id="inventoryModel" placeholder="예: PCX, NMAX, 직접 확인" value="${escapeHtml(editing?.model ?? "")}" />
         </div>
         <div class="field">
+          <label for="inventoryKeywords">자동 차감 키워드</label>
+          <input class="input" id="inventoryKeywords" placeholder="예: 엔진오일, 오일 교체" value="${escapeHtml(editing?.keywords ?? "")}" />
+        </div>
+        <div class="field">
           <label for="inventoryLocation">보관 위치</label>
           <input class="input" id="inventoryLocation" placeholder="예: A-1" value="${escapeHtml(editing?.location ?? "")}" />
         </div>
@@ -670,6 +713,7 @@ function renderInventory() {
               <div class="inventory-meta">
                 <span>위치 ${escapeHtml(item.location || "미지정")}</span>
                 <span>경고 ${money(item.minQuantity)}${escapeHtml(item.unit || "개")} 이하</span>
+                ${item.keywords ? `<span>키워드 ${escapeHtml(item.keywords)}</span>` : ""}
               </div>
               <div class="item-actions">
                 <button class="text-button" data-inventory-edit="${item.id}">수정</button>
@@ -842,6 +886,7 @@ function handleInventorySubmit(event) {
   event.preventDefault();
   const name = document.querySelector("#inventoryName").value.trim();
   const model = document.querySelector("#inventoryModel").value.trim();
+  const keywords = document.querySelector("#inventoryKeywords").value.trim();
   const location = document.querySelector("#inventoryLocation").value.trim();
   const quantity = numberFromInput(document.querySelector("#inventoryQuantity").value);
   const minQuantity = numberFromInput(document.querySelector("#inventoryMinQuantity").value);
@@ -854,7 +899,7 @@ function handleInventorySubmit(event) {
     showToast("수량은 0 이상 숫자로 입력해주세요.");
     return;
   }
-  const next = { id: state.editingInventoryId ?? Date.now(), name, model, location, quantity, minQuantity, unit };
+  const next = { id: state.editingInventoryId ?? Date.now(), name, model, keywords, location, quantity, minQuantity, unit };
   if (state.editingInventoryId) {
     saveInventory(getInventory().map((item) => (item.id === state.editingInventoryId ? next : item)));
     state.editingInventoryId = null;
@@ -984,8 +1029,9 @@ function attachEvents() {
         const current = Number(amount.value.replaceAll(",", "") || 0);
         amount.value = money(current + Number(template.amount));
       }
+      const applied = autoFillPartsFromWorkText(`${template.label} ${template.content} ${content.value}`, { silent: true });
       saveTemplates(getTemplates().map((item) => item.id === template.id ? { ...item, usage: (item.usage ?? 0) + 1 } : item));
-      showToast("템플릿을 적용했습니다.");
+      showToast(applied ? `템플릿 적용 + 재고 ${applied}개 자동 입력` : "템플릿을 적용했습니다.");
     });
   });
 
@@ -1072,6 +1118,7 @@ function attachEvents() {
     clearInventoryForm.addEventListener("click", () => {
       document.querySelector("#inventoryName").value = "";
       document.querySelector("#inventoryModel").value = "";
+      document.querySelector("#inventoryKeywords").value = "";
       document.querySelector("#inventoryLocation").value = "";
       document.querySelector("#inventoryQuantity").value = "";
       document.querySelector("#inventoryMinQuantity").value = "1";
@@ -1124,6 +1171,12 @@ function attachEvents() {
 
   const vehicleInput = document.querySelector("#vehicleNumber");
   if (vehicleInput) vehicleInput.addEventListener("input", updateVehicleHistory);
+
+  const workContent = document.querySelector("#workContent");
+  if (workContent) {
+    workContent.addEventListener("blur", () => autoFillPartsFromWorkText(workContent.value));
+    workContent.addEventListener("change", () => autoFillPartsFromWorkText(workContent.value));
+  }
 }
 
 function render() {

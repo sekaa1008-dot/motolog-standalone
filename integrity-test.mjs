@@ -28,11 +28,13 @@ const checks = [
   ["inventory view", files.app.includes("function renderInventory") && files.app.includes("data-view=\"inventory\"")],
   ["parts saved with log", files.app.includes("partsUsed") && files.app.includes("partsForFormData")],
   ["part quantity stepper", files.app.includes("data-part-step") && files.css.includes(".part-stepper")],
+  ["automatic part suggestion", files.app.includes("autoFillPartsFromWorkText") && files.app.includes("inventoryMatchKeywords")],
+  ["inventory keywords field", files.app.includes("inventoryKeywords") && files.app.includes("자동 차감 키워드")],
   ["inventory auto deduction", files.app.includes("applyInventoryForLogChange")],
   ["back four search", files.app.includes("endsWith(digits.slice(-4))")],
   ["daily close summary", files.app.includes("일일 마감 요약") && files.app.includes("partsSummary")],
   ["stock warning styles", files.css.includes(".stock-danger") && files.css.includes(".stock-warning")],
-  ["service worker cache bumped", files.sw.includes("motolog-pwa-v4")],
+  ["service worker cache bumped", files.sw.includes("motolog-pwa-v5")],
 ];
 
 const failed = checks.filter(([, ok]) => !ok);

@@ -596,6 +596,13 @@ button {
   font-weight: 800;
 }
 
+.field-help {
+  margin: -2px 0 0;
+  color: var(--muted-2);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 .input,
 .textarea,
 .select {
