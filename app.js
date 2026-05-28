@@ -122,6 +122,10 @@ function setView(view, options = {}) {
   render();
 }
 
+function openPhotoCamera() {
+  document.querySelector("#photoCameraFile")?.click();
+}
+
 function statsForToday() {
   const today = todayStr();
   const rows = getLogs().filter((log) => log.workDate === today);
@@ -639,7 +643,10 @@ function attachEvents() {
     button.addEventListener("click", () => {
       const view = button.dataset.view;
       if (view === "export") exportCsv();
-      else setView(view);
+      else {
+        setView(view);
+        if (view === "new") openPhotoCamera();
+      }
     });
   });
 
@@ -718,7 +725,7 @@ function attachEvents() {
   if (seed) seed.addEventListener("click", seedData);
 
   const takePhoto = document.querySelector("[data-action='take-photo']");
-  if (takePhoto) takePhoto.addEventListener("click", () => document.querySelector("#photoCameraFile")?.click());
+  if (takePhoto) takePhoto.addEventListener("click", openPhotoCamera);
 
   const choosePhoto = document.querySelector("[data-action='choose-photo']");
   if (choosePhoto) choosePhoto.addEventListener("click", () => document.querySelector("#photoGalleryFile")?.click());
