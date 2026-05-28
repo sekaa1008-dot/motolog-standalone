@@ -14,8 +14,6 @@ const state = {
   detailId: null,
   paymentMethod: "card",
   search: "",
-  plateImage: "",
-  cameraStream: null,
 };
 
 function todayStr() {
@@ -94,31 +92,6 @@ function showToast(message) {
   showToast.timer = setTimeout(() => toast.classList.remove("show"), 2200);
 }
 
-function normalizePlateText(text) {
-  const raw = String(text || "");
-  const compact = raw
-    .toUpperCase()
-    .replace(/[^\dA-Z가-힣]/g, "")
-    .replace(/O/g, "0")
-    .replace(/I/g, "1")
-    .replace(/B/g, "8")
-    .replace(/S/g, "5");
-  const modern = compact.match(/\d{1,3}[가-힣]\d{4}/);
-  if (modern) return modern[0];
-  const legacy = compact.match(/[가-힣]{1,2}\d{4}/);
-  if (legacy) return legacy[0];
-  const spaced = raw.replace(/\s+/g, "");
-  const motorcycle = spaced.match(/\d{1,3}[가-힣]\d{4}|[가-힣]{1,2}\d{4}/);
-  if (motorcycle) return motorcycle[0];
-  const lastFour = compact.match(/\d{4}/);
-  if (lastFour && compact.length <= 8) return lastFour[0];
-  return "";
-}
-
-function isUsefulPlate(plate) {
-  return /^(\d{1,3}[가-힣]\d{4}|[가-힣]{1,2}\d{4}|\d{4})$/.test(String(plate || ""));
-}
-
 function getVehicleHistory(vehicleNumber, excludeId = null) {
   const normalized = String(vehicleNumber || "").replace(/\s/g, "");
   if (!normalized) return [];
@@ -192,15 +165,6 @@ function appShell(content) {
         ${navButton("search", "⌕", "검색")}
         ${navButton("templates", "▤", "템플릿")}
       </nav>
-      <div class="camera-modal" id="cameraModal" aria-hidden="true">
-        <video class="camera-video" id="cameraVideo" autoplay playsinline muted></video>
-        <div class="camera-tip"><strong>번호판만</strong> 프레임 안에 크게 맞추고<br>빛 반사를 피해 정면에서 촬영하세요.</div>
-        <div class="camera-guide"></div>
-        <div class="camera-controls">
-          <button class="button" data-action="close-camera">닫기</button>
-          <button class="button primary" data-action="capture-plate">촬영</button>
-        </div>
-      </div>
     </div>
   `;
 }
@@ -328,26 +292,6 @@ function renderForm() {
         <button class="text-button" data-view="home">취소</button>
       </div>
       <form class="form" id="logForm">
-        <div class="plate-box">
-          <div>
-            <h4>번호판 자동 인식</h4>
-            <p>선명도가 중요해서 폰 기본 카메라로 고화질 촬영하는 방식을 우선 사용합니다.</p>
-          </div>
-          <div class="plate-actions">
-            <button type="button" class="button primary" data-action="native-camera">고화질 촬영</button>
-            <button type="button" class="button" data-action="pick-plate">사진 선택</button>
-          </div>
-          <div class="plate-actions wide">
-            <button type="button" class="button" data-action="open-camera">실시간 가이드 카메라</button>
-          </div>
-          <input id="plateCameraFile" type="file" accept="image/*" capture="environment" hidden />
-          <input id="plateFile" type="file" accept="image/*" hidden />
-          <div class="plate-preview ${state.plateImage ? "show" : ""}" id="platePreview">
-            ${state.plateImage ? `<img src="${state.plateImage}" alt="번호판 촬영 이미지">` : ""}
-          </div>
-          <button type="button" class="button primary" data-action="run-ocr">번호판 인식하기</button>
-          <p id="ocrStatus">번호판이 사진 중앙에 크게 나오게 찍으면 인식률이 올라갑니다. 안 되면 마지막 4자리만 직접 입력해도 됩니다.</p>
-        </div>
         <div class="field">
           <label for="workDate">작업 날짜</label>
           <input class="input" id="workDate" name="workDate" type="date" value="${editing?.workDate ?? todayStr()}" />
@@ -357,6 +301,23 @@ function renderForm() {
           <input class="input" id="vehicleNumber" name="vehicleNumber" placeholder="예: 12가3456" value="${escapeHtml(editing?.vehicleNumber ?? "")}" />
         </div>
         <div class="vehicle-history ${historyHtml ? "show" : ""}" id="vehicleHistory">${historyHtml}</div>
+        <div class="photo-box">
+          <div>
+            <h4>작업 사진</h4>
+            <p>번호판이나 작업 부위를 촬영하거나 갤러리에서 선택해 기록에 남길 수 있습니다.</p>
+          </div>
+          <div class="photo-actions">
+            <button type="button" class="button primary" data-action="take-photo">카메라 촬영</button>
+            <button type="button" class="button" data-action="choose-photo">갤러리 선택</button>
+          </div>
+          <input id="photoCameraFile" type="file" accept="image/*" capture="environment" hidden />
+          <input id="photoGalleryFile" type="file" accept="image/*" hidden />
+          <input id="photoDataUrl" name="photoDataUrl" type="hidden" value="${escapeHtml(editing?.photoDataUrl ?? "")}" />
+          <div class="photo-preview ${editing?.photoDataUrl ? "show" : ""}" id="photoPreview">
+            ${editing?.photoDataUrl ? `<img src="${editing.photoDataUrl}" alt="작업 사진">` : ""}
+          </div>
+          <button type="button" class="button danger ${editing?.photoDataUrl ? "" : "hidden"}" id="removePhotoButton" data-action="remove-photo">사진 삭제</button>
+        </div>
         <div class="field">
           <label for="workContent">작업 내용</label>
           <textarea class="textarea" id="workContent" name="workContent" placeholder="예: 엔진오일 교체, 앞 브레이크 패드 교체">${escapeHtml(editing?.workContent ?? "")}</textarea>
@@ -488,6 +449,7 @@ function renderDetail() {
         ${detailLine("금액", `${money(log.amount)}원`)}
         ${detailLine("결제 방식", paymentLabels[log.paymentMethod])}
         ${detailLine("고객 연락처", log.ownerPhone || "-")}
+        ${log.photoDataUrl ? `<div class="detail-line"><p>작업 사진</p><img class="detail-photo" src="${log.photoDataUrl}" alt="작업 사진"></div>` : ""}
       </div>
       <div class="form-actions">
         <button class="button" data-view="list">목록으로</button>
@@ -579,6 +541,7 @@ function handleLogSubmit(event) {
     amount,
     paymentMethod: state.paymentMethod,
     ownerPhone: String(data.get("ownerPhone") || "").trim(),
+    photoDataUrl: String(data.get("photoDataUrl") || ""),
     createdAt: new Date().toISOString(),
   };
 
@@ -606,11 +569,6 @@ function handleTemplateSubmit(event) {
   render();
 }
 
-function setOcrStatus(message) {
-  const status = document.querySelector("#ocrStatus");
-  if (status) status.textContent = message;
-}
-
 function loadImage(src) {
   return new Promise((resolve, reject) => {
     const image = new Image();
@@ -620,141 +578,51 @@ function loadImage(src) {
   });
 }
 
-async function preparePlateImage(dataUrl, crop = null) {
+async function compressPhoto(file) {
+  const dataUrl = await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
   const image = await loadImage(dataUrl);
   const canvas = document.createElement("canvas");
-  const source = crop
-    ? {
-        x: Math.round(image.width * crop.x),
-        y: Math.round(image.height * crop.y),
-        width: Math.round(image.width * crop.width),
-        height: Math.round(image.height * crop.height),
-      }
-    : { x: 0, y: 0, width: image.width, height: image.height };
-  const maxWidth = crop ? 1400 : 1200;
-  const scale = Math.min(1, maxWidth / source.width);
-  canvas.width = Math.round(source.width * scale);
-  canvas.height = Math.round(source.height * scale);
-  const ctx = canvas.getContext("2d");
-  ctx.drawImage(image, source.x, source.y, source.width, source.height, 0, 0, canvas.width, canvas.height);
-  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-  const data = imageData.data;
-  for (let i = 0; i < data.length; i += 4) {
-    const gray = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
-    const contrast = gray > 142 ? 255 : 0;
-    data[i] = contrast;
-    data[i + 1] = contrast;
-    data[i + 2] = contrast;
-  }
-  ctx.putImageData(imageData, 0, 0);
-  return canvas;
+  const maxSize = 1200;
+  const scale = Math.min(1, maxSize / Math.max(image.width, image.height));
+  canvas.width = Math.round(image.width * scale);
+  canvas.height = Math.round(image.height * scale);
+  canvas.getContext("2d").drawImage(image, 0, 0, canvas.width, canvas.height);
+  return canvas.toDataURL("image/jpeg", 0.82);
 }
 
-function plateCrops() {
-  return [
-    null,
-    { x: 0.08, y: 0.30, width: 0.84, height: 0.36 },
-    { x: 0.12, y: 0.36, width: 0.76, height: 0.30 },
-    { x: 0.18, y: 0.40, width: 0.64, height: 0.24 },
-  ];
-}
-
-function loadTesseract() {
-  if (window.Tesseract) return Promise.resolve(window.Tesseract);
-  return new Promise((resolve, reject) => {
-    const script = document.createElement("script");
-    script.src = "https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js";
-    script.onload = () => resolve(window.Tesseract);
-    script.onerror = () => reject(new Error("OCR 엔진을 불러오지 못했습니다."));
-    document.head.appendChild(script);
-  });
-}
-
-async function runPlateOcr() {
-  if (!state.plateImage) {
-    showToast("먼저 번호판 사진을 촬영하거나 불러오세요.");
-    return;
-  }
+async function handlePhotoFile(file) {
+  if (!file) return;
   try {
-    setOcrStatus("OCR 엔진을 준비하는 중입니다...");
-    const Tesseract = await loadTesseract();
-    let plate = "";
-    for (const [index, crop] of plateCrops().entries()) {
-      const canvas = await preparePlateImage(state.plateImage, crop);
-      setOcrStatus(`번호판을 읽는 중입니다. 영역 ${index + 1}/4`);
-      const result = await Tesseract.recognize(canvas, "kor+eng", {
-        tessedit_char_whitelist: "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ가나다라마바사아자차카타파하거너더러머버서어저처커터퍼허고노도로모보소오조초코토포호구누두루무부수우주추쿠투푸후그느드르므브스으즈츠크트프흐기로",
-        logger: (info) => {
-          if (info.status === "recognizing text") {
-            setOcrStatus(`번호판 인식 중... ${Math.round((info.progress || 0) * 100)}%`);
-          }
-        },
-      });
-      plate = normalizePlateText(result?.data?.text || "");
-      if (isUsefulPlate(plate)) break;
-    }
-    if (!isUsefulPlate(plate)) {
-      setOcrStatus("번호판으로 확정하기 어려워 자동 입력하지 않았습니다. 차량 번호 칸에 직접 입력해주세요.");
-      document.querySelector("#vehicleNumber")?.focus();
-      return;
-    }
-    const input = document.querySelector("#vehicleNumber");
-    input.value = plate;
-    input.dispatchEvent(new Event("input", { bubbles: true }));
-    setOcrStatus(`인식 결과: ${plate}`);
-    showToast(`번호판 인식: ${plate}`);
-  } catch (error) {
-    setOcrStatus("OCR 실행에 실패했습니다. 사진을 보고 직접 입력해주세요.");
-    showToast(error.message || "번호판 인식에 실패했습니다.");
-  }
-}
-
-async function openCamera() {
-  const modal = document.querySelector("#cameraModal");
-  const video = document.querySelector("#cameraVideo");
-  if (!navigator.mediaDevices?.getUserMedia) {
-    showToast("이 브라우저에서는 카메라 직접 실행을 지원하지 않습니다.");
-    document.querySelector("#plateFile")?.click();
-    return;
-  }
-  try {
-    state.cameraStream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } },
-      audio: false,
-    });
-    video.srcObject = state.cameraStream;
-    modal.classList.add("show");
-    modal.setAttribute("aria-hidden", "false");
+    const dataUrl = await compressPhoto(file);
+    const hidden = document.querySelector("#photoDataUrl");
+    const preview = document.querySelector("#photoPreview");
+    const removeButton = document.querySelector("#removePhotoButton");
+    hidden.value = dataUrl;
+    preview.innerHTML = `<img src="${dataUrl}" alt="작업 사진">`;
+    preview.classList.add("show");
+    removeButton?.classList.remove("hidden");
+    showToast("사진이 추가되었습니다.");
   } catch {
-    showToast("카메라 권한이 필요합니다. 사진 불러오기로 대신 진행하세요.");
+    showToast("사진을 불러오지 못했습니다.");
   }
 }
 
-function closeCamera() {
-  if (state.cameraStream) {
-    state.cameraStream.getTracks().forEach((track) => track.stop());
-    state.cameraStream = null;
+function removePhoto() {
+  const hidden = document.querySelector("#photoDataUrl");
+  const preview = document.querySelector("#photoPreview");
+  const removeButton = document.querySelector("#removePhotoButton");
+  if (hidden) hidden.value = "";
+  if (preview) {
+    preview.innerHTML = "";
+    preview.classList.remove("show");
   }
-  const modal = document.querySelector("#cameraModal");
-  modal?.classList.remove("show");
-  modal?.setAttribute("aria-hidden", "true");
-}
-
-function capturePlate() {
-  const video = document.querySelector("#cameraVideo");
-  if (!video?.videoWidth) return;
-  const canvas = document.createElement("canvas");
-  const cropWidth = Math.round(video.videoWidth * 0.74);
-  const cropHeight = Math.round(cropWidth / 1.75);
-  const sx = Math.round((video.videoWidth - cropWidth) / 2);
-  const sy = Math.round(video.videoHeight * 0.42 - cropHeight / 2);
-  canvas.width = cropWidth;
-  canvas.height = cropHeight;
-  canvas.getContext("2d").drawImage(video, sx, Math.max(0, sy), cropWidth, cropHeight, 0, 0, cropWidth, cropHeight);
-  state.plateImage = canvas.toDataURL("image/jpeg", 0.92);
-  closeCamera();
-  render();
-  setOcrStatus("촬영 완료. 번호판 인식하기를 눌러주세요.");
+  removeButton?.classList.add("hidden");
+  showToast("사진을 삭제했습니다.");
 }
 
 function updateVehicleHistory() {
@@ -849,41 +717,20 @@ function attachEvents() {
   const seed = document.querySelector("[data-action='seed']");
   if (seed) seed.addEventListener("click", seedData);
 
-  const openCameraButton = document.querySelector("[data-action='open-camera']");
-  if (openCameraButton) openCameraButton.addEventListener("click", openCamera);
+  const takePhoto = document.querySelector("[data-action='take-photo']");
+  if (takePhoto) takePhoto.addEventListener("click", () => document.querySelector("#photoCameraFile")?.click());
 
-  const closeCameraButton = document.querySelector("[data-action='close-camera']");
-  if (closeCameraButton) closeCameraButton.addEventListener("click", closeCamera);
+  const choosePhoto = document.querySelector("[data-action='choose-photo']");
+  if (choosePhoto) choosePhoto.addEventListener("click", () => document.querySelector("#photoGalleryFile")?.click());
 
-  const captureButton = document.querySelector("[data-action='capture-plate']");
-  if (captureButton) captureButton.addEventListener("click", capturePlate);
+  const photoCameraFile = document.querySelector("#photoCameraFile");
+  if (photoCameraFile) photoCameraFile.addEventListener("change", (event) => handlePhotoFile(event.target.files?.[0]));
 
-  const pickPlate = document.querySelector("[data-action='pick-plate']");
-  if (pickPlate) pickPlate.addEventListener("click", () => document.querySelector("#plateFile")?.click());
+  const photoGalleryFile = document.querySelector("#photoGalleryFile");
+  if (photoGalleryFile) photoGalleryFile.addEventListener("change", (event) => handlePhotoFile(event.target.files?.[0]));
 
-  const nativeCamera = document.querySelector("[data-action='native-camera']");
-  if (nativeCamera) nativeCamera.addEventListener("click", () => document.querySelector("#plateCameraFile")?.click());
-
-  const handlePlateFile = (event) => {
-      const file = event.target.files?.[0];
-      if (!file) return;
-      const reader = new FileReader();
-      reader.onload = () => {
-        state.plateImage = String(reader.result || "");
-        render();
-        setOcrStatus("사진을 불러왔습니다. 번호판 인식하기를 눌러주세요.");
-      };
-      reader.readAsDataURL(file);
-  };
-
-  const plateFile = document.querySelector("#plateFile");
-  if (plateFile) plateFile.addEventListener("change", handlePlateFile);
-
-  const plateCameraFile = document.querySelector("#plateCameraFile");
-  if (plateCameraFile) plateCameraFile.addEventListener("change", handlePlateFile);
-
-  const runOcr = document.querySelector("[data-action='run-ocr']");
-  if (runOcr) runOcr.addEventListener("click", runPlateOcr);
+  const removePhotoButton = document.querySelector("[data-action='remove-photo']");
+  if (removePhotoButton) removePhotoButton.addEventListener("click", removePhoto);
 
   const vehicleInput = document.querySelector("#vehicleNumber");
   if (vehicleInput) vehicleInput.addEventListener("input", updateVehicleHistory);
