@@ -306,6 +306,22 @@ button {
   gap: 10px;
 }
 
+.summary-row {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--card);
+  padding: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.summary-row span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
 .log-item {
   width: 100%;
   border: 1px solid var(--line);
@@ -397,6 +413,107 @@ button {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 8px;
+}
+
+.inventory-pick-list {
+  display: grid;
+  gap: 8px;
+}
+
+.inventory-pick {
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  background: var(--card);
+  padding: 10px;
+  display: grid;
+  grid-template-columns: 1fr 74px;
+  align-items: center;
+  gap: 10px;
+}
+
+.inventory-pick strong,
+.stock-card strong {
+  display: block;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.inventory-pick span,
+.stock-card span,
+.inventory-meta {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.part-qty {
+  min-height: 42px;
+  padding: 10px;
+  text-align: center;
+}
+
+.stock-status,
+.stock-card {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--card);
+  padding: 14px;
+}
+
+.stock-status {
+  margin-bottom: 14px;
+}
+
+.stock-status span {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.stock-card {
+  display: grid;
+  gap: 10px;
+}
+
+.stock-card-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.stock-count {
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.inventory-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+}
+
+.split-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.stock-ok {
+  border-color: rgba(85, 210, 143, .28);
+  background: rgba(85, 210, 143, .08);
+}
+
+.stock-warning {
+  border-color: rgba(255, 178, 105, .72);
+  background: rgba(255, 178, 105, .18);
+}
+
+.stock-danger {
+  border-color: rgba(255, 107, 107, .82);
+  background: rgba(255, 107, 107, .2);
+  box-shadow: inset 4px 0 0 rgba(255, 107, 107, .9);
 }
 
 .photo-preview {

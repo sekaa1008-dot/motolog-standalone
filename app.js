@@ -1,5 +1,6 @@
 const STORE_KEY = "motolog.logs.v1";
 const TEMPLATE_KEY = "motolog.templates.v1";
+const INVENTORY_KEY = "motolog.inventory.v1";
 
 const paymentLabels = {
   card: "카드",
@@ -15,6 +16,7 @@ const state = {
   paymentMethod: "card",
   search: "",
   editingTemplateId: null,
+  editingInventoryId: null,
 };
 
 function todayStr() {
@@ -80,6 +82,90 @@ function saveTemplates(templates) {
   localStorage.setItem(TEMPLATE_KEY, JSON.stringify(templates));
 }
 
+function getInventory() {
+  const raw = localStorage.getItem(INVENTORY_KEY);
+  if (raw !== null) {
+    try {
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+  const defaults = [
+    {
+      id: 1,
+      name: "미쉐린 130/70-13 타이어",
+      model: "PCX, NMAX 등 직접 확인",
+      location: "A-1",
+      quantity: 2,
+      minQuantity: 1,
+      unit: "개",
+    },
+    {
+      id: 2,
+      name: "엔진오일 1L",
+      model: "스쿠터 공용",
+      location: "B-1",
+      quantity: 8,
+      minQuantity: 3,
+      unit: "통",
+    },
+  ];
+  localStorage.setItem(INVENTORY_KEY, JSON.stringify(defaults));
+  return defaults;
+}
+
+function saveInventory(items) {
+  localStorage.setItem(INVENTORY_KEY, JSON.stringify(items));
+}
+
+function stockClass(item) {
+  const quantity = Number(item.quantity || 0);
+  const min = Number(item.minQuantity || 0);
+  if (quantity <= 0) return "stock-danger";
+  if (quantity <= min) return "stock-warning";
+  return "stock-ok";
+}
+
+function numberFromInput(value) {
+  return Number(String(value || "0").replaceAll(",", ""));
+}
+
+function partsForFormData(data, inventory) {
+  return inventory
+    .map((item) => {
+      const quantity = numberFromInput(data.get(`part-${item.id}`));
+      if (!quantity || quantity <= 0 || Number.isNaN(quantity)) return null;
+      return {
+        inventoryId: item.id,
+        name: item.name,
+        quantity,
+        unit: item.unit || "개",
+      };
+    })
+    .filter(Boolean);
+}
+
+function applyInventoryForLogChange(previousLog, nextLog) {
+  const items = getInventory().map((item) => ({ ...item }));
+  const apply = (part, direction) => {
+    const item = items.find((candidate) => candidate.id === part.inventoryId);
+    if (!item) return;
+    item.quantity = Math.max(0, Number(item.quantity || 0) + direction * Number(part.quantity || 0));
+  };
+  for (const part of previousLog?.partsUsed || []) apply(part, 1);
+  for (const part of nextLog?.partsUsed || []) apply(part, -1);
+  saveInventory(items);
+  return items;
+}
+
+function stockWarningText(items = getInventory()) {
+  const low = items.filter((item) => Number(item.quantity || 0) <= Number(item.minQuantity || 0));
+  if (!low.length) return "";
+  return ` 재고 경고: ${low.slice(0, 2).map((item) => item.name).join(", ")}`;
+}
+
 function showToast(message) {
   let toast = document.querySelector(".toast");
   if (!toast) {
@@ -120,6 +206,7 @@ function setView(view, options = {}) {
   state.detailId = options.detailId ?? null;
   state.paymentMethod = options.paymentMethod ?? "card";
   state.editingTemplateId = options.editingTemplateId ?? null;
+  state.editingInventoryId = options.editingInventoryId ?? null;
   window.scrollTo({ top: 0, behavior: "smooth" });
   render();
 }
@@ -150,6 +237,19 @@ function paymentSummary(logs) {
   );
 }
 
+function partsSummary(logs) {
+  const totals = new Map();
+  for (const log of logs) {
+    for (const part of log.partsUsed || []) {
+      const prev = totals.get(part.name) || { name: part.name, quantity: 0, unit: part.unit || "개" };
+      prev.quantity += Number(part.quantity || 0);
+      if (part.unit) prev.unit = part.unit;
+      totals.set(part.name, prev);
+    }
+  }
+  return [...totals.values()].sort((a, b) => b.quantity - a.quantity);
+}
+
 function appShell(content) {
   const canInstall = Boolean(window.installPromptEvent) && !window.matchMedia("(display-mode: standalone)").matches;
   return `
@@ -173,7 +273,7 @@ function appShell(content) {
         ${navButton("list", "☰", "목록")}
         ${navButton("new", "＋", "기록")}
         ${navButton("search", "⌕", "검색")}
-        ${navButton("templates", "▤", "템플릿")}
+        ${navButton("inventory", "▦", "재고")}
       </nav>
     </div>
   `;
@@ -213,6 +313,8 @@ function emptyState(text) {
 function renderHome() {
   const stats = statsForToday();
   const summary = paymentSummary(stats.logs);
+  const parts = partsSummary(stats.logs);
+  const lowStock = getInventory().filter((item) => Number(item.quantity || 0) <= Number(item.minQuantity || 0));
   return appShell(`
     <section class="hero">
       <div class="row">
@@ -242,12 +344,39 @@ function renderHome() {
 
     ${stats.count ? `
       <section class="section">
-        <div class="section-head"><h3>결제방식별 합계</h3></div>
+        <div class="section-head"><h3>일일 마감 요약</h3></div>
         <div class="quick-grid">
           ${["transfer", "card", "cash", "credit"].map((key) => `
             <div class="card">
               <p class="stat-label">${paymentLabels[key]}</p>
               <p class="stat-value money" style="font-size:18px">${money(summary[key])}원</p>
+            </div>
+          `).join("")}
+        </div>
+        ${parts.length ? `
+          <div class="list" style="margin-top:12px">
+            ${parts.slice(0, 5).map((part) => `
+              <div class="summary-row">
+                <span>${escapeHtml(part.name)}</span>
+                <strong>${money(part.quantity)}${escapeHtml(part.unit)}</strong>
+              </div>
+            `).join("")}
+          </div>
+        ` : ""}
+      </section>
+    ` : ""}
+
+    ${lowStock.length ? `
+      <section class="section">
+        <div class="section-head">
+          <h3>재고 경고</h3>
+          <button class="text-button" data-view="inventory">재고 보기</button>
+        </div>
+        <div class="list">
+          ${lowStock.slice(0, 4).map((item) => `
+            <div class="stock-card ${stockClass(item)}">
+              <strong>${escapeHtml(item.name)}</strong>
+              <span>${money(item.quantity)}${escapeHtml(item.unit || "개")} 남음 · ${escapeHtml(item.location || "위치 미지정")}</span>
             </div>
           `).join("")}
         </div>
@@ -263,6 +392,7 @@ function renderHome() {
         ${quickCard("new", "＋", "작업 기록", "정비 내역 추가", true)}
         ${quickCard("list", "☰", "전체 목록", "누적 이력 확인")}
         ${quickCard("search", "⌕", "차량 검색", "번호/날짜 조회")}
+        ${quickCard("inventory", "▦", "재고 관리", "부품 수량 확인")}
         ${quickCard("export", "⇩", "CSV 내보내기", "월말 정산 자료")}
       </div>
     </section>
@@ -292,6 +422,8 @@ function renderForm() {
   const logs = getLogs();
   const editing = logs.find((log) => log.id === state.editingId);
   const templates = getTemplates();
+  const inventory = getInventory();
+  const usedParts = new Map((editing?.partsUsed || []).map((part) => [part.inventoryId, part]));
   state.paymentMethod = editing?.paymentMethod ?? state.paymentMethod ?? "card";
   const historyHtml = renderVehicleHistory(editing?.vehicleNumber ?? "", editing?.id ?? null);
 
@@ -341,6 +473,23 @@ function renderForm() {
           </div>
         </div>
         <div class="field">
+          <label>사용 부품 / 재고 차감</label>
+          <div class="inventory-pick-list">
+            ${inventory.length ? inventory.map((item) => {
+              const used = usedParts.get(item.id);
+              return `
+                <div class="inventory-pick ${stockClass(item)}">
+                  <div>
+                    <strong>${escapeHtml(item.name)}</strong>
+                    <span>${money(item.quantity)}${escapeHtml(item.unit || "개")} 보유 · ${escapeHtml(item.location || "위치 미지정")}</span>
+                  </div>
+                  <input class="input part-qty" name="part-${item.id}" inputmode="numeric" placeholder="0" value="${used?.quantity ?? ""}" aria-label="${escapeHtml(item.name)} 사용 수량" />
+                </div>
+              `;
+            }).join("") : `<div class="empty">등록된 재고가 없습니다. 재고 메뉴에서 품목을 추가하세요.</div>`}
+          </div>
+        </div>
+        <div class="field">
           <label for="amount">금액</label>
           <input class="input" id="amount" name="amount" inputmode="numeric" placeholder="0" value="${editing ? money(editing.amount) : ""}" />
         </div>
@@ -382,19 +531,25 @@ function renderList() {
 
 function renderSearch() {
   const query = state.search.trim().toLowerCase();
+  const digits = query.replace(/\D/g, "");
   const logs = query
-    ? getLogs().filter((log) => [log.vehicleNumber, log.workContent, log.workDate, log.ownerPhone].some((value) => String(value || "").toLowerCase().includes(query)))
+    ? getLogs().filter((log) => {
+        const vehicle = String(log.vehicleNumber || "").toLowerCase();
+        const vehicleDigits = vehicle.replace(/\D/g, "");
+        const backFourMatch = digits.length >= 4 && vehicleDigits.endsWith(digits.slice(-4));
+        return backFourMatch || [log.vehicleNumber, log.workContent, log.workDate, log.ownerPhone].some((value) => String(value || "").toLowerCase().includes(query));
+      })
     : [];
 
   return appShell(`
     <section class="section" style="margin-top:0">
       <div class="section-head"><h3>검색</h3></div>
       <div class="filters">
-        <input class="input" id="searchInput" placeholder="차량번호, 날짜, 작업내용 검색" value="${escapeHtml(state.search)}" />
+        <input class="input" id="searchInput" placeholder="뒤 4자리, 차량번호, 날짜, 작업내용 검색" value="${escapeHtml(state.search)}" />
         <button class="button" data-action="clear-search">초기화</button>
       </div>
       <div class="list">
-        ${query ? (logs.length ? logs.map(logCard).join("") : emptyState("검색 결과가 없습니다.")) : emptyState("검색어를 입력하면 기록을 찾아드립니다.")}
+        ${query ? (logs.length ? logs.map(logCard).join("") : emptyState("검색 결과가 없습니다.")) : emptyState("차량번호 뒤 4자리만 입력해도 검색됩니다.")}
       </div>
     </section>
   `);
@@ -450,9 +605,84 @@ function renderTemplates() {
   `);
 }
 
+function renderInventory() {
+  const inventory = getInventory();
+  const editing = inventory.find((item) => item.id === state.editingInventoryId);
+  const lowCount = inventory.filter((item) => Number(item.quantity || 0) <= Number(item.minQuantity || 0)).length;
+  return appShell(`
+    <section class="section" style="margin-top:0">
+      <div class="section-head">
+        <h3>${editing ? "재고 수정" : "재고 관리"}</h3>
+        <button class="text-button" data-view="new">기록 작성</button>
+      </div>
+      <div class="stock-status ${lowCount ? "stock-warning" : "stock-ok"}">
+        <strong>${lowCount ? `확인 필요 재고 ${lowCount}개` : "재고 상태 정상"}</strong>
+        <span>정비 기록에서 사용 수량을 입력하면 자동으로 차감됩니다.</span>
+      </div>
+      <form class="form" id="inventoryForm">
+        <div class="field">
+          <label for="inventoryName">부품명</label>
+          <input class="input" id="inventoryName" placeholder="예: 미쉐린 130/70-13 타이어" value="${escapeHtml(editing?.name ?? "")}" />
+        </div>
+        <div class="field">
+          <label for="inventoryModel">적용 모델</label>
+          <input class="input" id="inventoryModel" placeholder="예: PCX, NMAX, 직접 확인" value="${escapeHtml(editing?.model ?? "")}" />
+        </div>
+        <div class="field">
+          <label for="inventoryLocation">보관 위치</label>
+          <input class="input" id="inventoryLocation" placeholder="예: A-1" value="${escapeHtml(editing?.location ?? "")}" />
+        </div>
+        <div class="split-fields">
+          <div class="field">
+            <label for="inventoryQuantity">현재 수량</label>
+            <input class="input" id="inventoryQuantity" inputmode="numeric" placeholder="0" value="${editing ? money(editing.quantity) : ""}" />
+          </div>
+          <div class="field">
+            <label for="inventoryMinQuantity">경고 수량</label>
+            <input class="input" id="inventoryMinQuantity" inputmode="numeric" placeholder="1" value="${editing ? money(editing.minQuantity) : "1"}" />
+          </div>
+        </div>
+        <div class="field">
+          <label for="inventoryUnit">단위</label>
+          <input class="input" id="inventoryUnit" placeholder="예: 개, 통, 세트" value="${escapeHtml(editing?.unit ?? "개")}" />
+        </div>
+        <div class="form-actions">
+          ${editing ? `<button class="button" type="button" data-action="cancel-inventory-edit">수정 취소</button>` : `<button class="button" type="button" data-action="clear-inventory-form">입력 지우기</button>`}
+          <button class="button primary" type="submit">${editing ? "수정 저장" : "재고 저장"}</button>
+        </div>
+      </form>
+      <div class="section">
+        <div class="section-head"><h3>등록된 재고</h3></div>
+        <div class="list">
+          ${inventory.length ? inventory.map((item) => `
+            <div class="stock-card ${stockClass(item)}">
+              <div class="stock-card-head">
+                <div>
+                  <strong>${escapeHtml(item.name)}</strong>
+                  <span>${escapeHtml(item.model || "적용 모델 미입력")}</span>
+                </div>
+                <strong class="stock-count">${money(item.quantity)}${escapeHtml(item.unit || "개")}</strong>
+              </div>
+              <div class="inventory-meta">
+                <span>위치 ${escapeHtml(item.location || "미지정")}</span>
+                <span>경고 ${money(item.minQuantity)}${escapeHtml(item.unit || "개")} 이하</span>
+              </div>
+              <div class="item-actions">
+                <button class="text-button" data-inventory-edit="${item.id}">수정</button>
+                <button class="text-button danger-text" data-inventory-delete="${item.id}">삭제</button>
+              </div>
+            </div>
+          `).join("") : emptyState("등록된 재고가 없습니다.")}
+        </div>
+      </div>
+    </section>
+  `);
+}
+
 function renderDetail() {
   const log = getLogs().find((item) => item.id === state.detailId);
   if (!log) return renderList();
+  const partsText = (log.partsUsed || []).map((part) => `${escapeHtml(part.name)} ${money(part.quantity)}${escapeHtml(part.unit || "개")}`).join("<br>");
   return appShell(`
     <section class="section" style="margin-top:0">
       <div class="section-head">
@@ -463,6 +693,7 @@ function renderDetail() {
         ${detailLine("작업 날짜", log.workDate)}
         ${detailLine("차량 번호", log.vehicleNumber || "-")}
         ${detailLine("작업 내용", escapeHtml(log.workContent).replaceAll("\n", "<br>"))}
+        ${partsText ? detailLine("사용 부품", partsText) : ""}
         ${detailLine("금액", `${money(log.amount)}원`)}
         ${detailLine("결제 방식", paymentLabels[log.paymentMethod])}
         ${detailLine("고객 연락처", log.ownerPhone || "-")}
@@ -486,11 +717,12 @@ function exportCsv() {
     showToast("내보낼 기록이 없습니다.");
     return;
   }
-  const header = ["날짜", "차량번호", "작업내용", "금액", "결제방식", "연락처"];
+  const header = ["날짜", "차량번호", "작업내용", "사용부품", "금액", "결제방식", "연락처"];
   const rows = logs.map((log) => [
     log.workDate,
     log.vehicleNumber || "",
     log.workContent || "",
+    (log.partsUsed || []).map((part) => `${part.name} ${part.quantity}${part.unit || "개"}`).join(" / "),
     log.amount || 0,
     paymentLabels[log.paymentMethod],
     log.ownerPhone || "",
@@ -539,7 +771,7 @@ function handleLogSubmit(event) {
   const form = event.currentTarget;
   const data = new FormData(form);
   const workContent = String(data.get("workContent") || "").trim();
-  const amount = Number(String(data.get("amount") || "0").replaceAll(",", ""));
+  const amount = numberFromInput(data.get("amount"));
   if (!workContent) {
     showToast("작업 내용을 입력해주세요.");
     return;
@@ -550,6 +782,9 @@ function handleLogSubmit(event) {
   }
 
   const logs = getLogs();
+  const inventory = getInventory();
+  const partsUsed = partsForFormData(data, inventory);
+  const previousLog = logs.find((log) => log.id === state.editingId);
   const next = {
     id: state.editingId ?? Date.now(),
     workDate: String(data.get("workDate") || todayStr()),
@@ -559,15 +794,18 @@ function handleLogSubmit(event) {
     paymentMethod: state.paymentMethod,
     ownerPhone: String(data.get("ownerPhone") || "").trim(),
     photoDataUrl: String(data.get("photoDataUrl") || ""),
-    createdAt: new Date().toISOString(),
+    partsUsed,
+    createdAt: previousLog?.createdAt ?? new Date().toISOString(),
   };
+  const nextInventory = applyInventoryForLogChange(previousLog, next);
+  const warning = stockWarningText(nextInventory);
 
   if (state.editingId) {
     saveLogs(logs.map((log) => (log.id === state.editingId ? next : log)));
-    showToast("기록을 수정했습니다.");
+    showToast(`기록을 수정했습니다.${warning}`);
   } else {
     saveLogs([next, ...logs]);
-    showToast("작업이 기록되었습니다.");
+    showToast(`작업이 기록되었습니다.${warning}`);
   }
   setView("home");
 }
@@ -592,6 +830,34 @@ function handleTemplateSubmit(event) {
   } else {
     saveTemplates([{ id: Date.now(), label, content, amount, usage: 0 }, ...getTemplates()]);
     showToast("템플릿을 저장했습니다.");
+  }
+  render();
+}
+
+function handleInventorySubmit(event) {
+  event.preventDefault();
+  const name = document.querySelector("#inventoryName").value.trim();
+  const model = document.querySelector("#inventoryModel").value.trim();
+  const location = document.querySelector("#inventoryLocation").value.trim();
+  const quantity = numberFromInput(document.querySelector("#inventoryQuantity").value);
+  const minQuantity = numberFromInput(document.querySelector("#inventoryMinQuantity").value);
+  const unit = document.querySelector("#inventoryUnit").value.trim() || "개";
+  if (!name) {
+    showToast("부품명을 입력해주세요.");
+    return;
+  }
+  if ([quantity, minQuantity].some((value) => Number.isNaN(value) || value < 0)) {
+    showToast("수량은 0 이상 숫자로 입력해주세요.");
+    return;
+  }
+  const next = { id: state.editingInventoryId ?? Date.now(), name, model, location, quantity, minQuantity, unit };
+  if (state.editingInventoryId) {
+    saveInventory(getInventory().map((item) => (item.id === state.editingInventoryId ? next : item)));
+    state.editingInventoryId = null;
+    showToast("재고를 수정했습니다.");
+  } else {
+    saveInventory([next, ...getInventory()]);
+    showToast("재고를 저장했습니다.");
   }
   render();
 }
@@ -688,6 +954,8 @@ function attachEvents() {
     button.addEventListener("click", () => {
       const id = Number(button.dataset.delete);
       if (!confirm("이 기록을 삭제할까요?")) return;
+      const deletedLog = getLogs().find((log) => log.id === id);
+      applyInventoryForLogChange(deletedLog, null);
       saveLogs(getLogs().filter((log) => log.id !== id));
       showToast("기록을 삭제했습니다.");
       setView("list");
@@ -733,11 +1001,32 @@ function attachEvents() {
     });
   });
 
+  document.querySelectorAll("[data-inventory-delete]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const id = Number(button.dataset.inventoryDelete);
+      if (!confirm("이 재고 품목을 삭제할까요? 기존 기록의 사용 부품 내역은 유지됩니다.")) return;
+      saveInventory(getInventory().filter((item) => item.id !== id));
+      if (state.editingInventoryId === id) state.editingInventoryId = null;
+      showToast("재고를 삭제했습니다.");
+      render();
+    });
+  });
+
+  document.querySelectorAll("[data-inventory-edit]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.editingInventoryId = Number(button.dataset.inventoryEdit);
+      render();
+    });
+  });
+
   const form = document.querySelector("#logForm");
   if (form) form.addEventListener("submit", handleLogSubmit);
 
   const templateForm = document.querySelector("#templateForm");
   if (templateForm) templateForm.addEventListener("submit", handleTemplateSubmit);
+
+  const inventoryForm = document.querySelector("#inventoryForm");
+  if (inventoryForm) inventoryForm.addEventListener("submit", handleInventorySubmit);
 
   const cancelTemplateEdit = document.querySelector("[data-action='cancel-template-edit']");
   if (cancelTemplateEdit) {
@@ -753,6 +1042,26 @@ function attachEvents() {
       document.querySelector("#templateLabel").value = "";
       document.querySelector("#templateContent").value = "";
       document.querySelector("#templateAmount").value = "";
+    });
+  }
+
+  const cancelInventoryEdit = document.querySelector("[data-action='cancel-inventory-edit']");
+  if (cancelInventoryEdit) {
+    cancelInventoryEdit.addEventListener("click", () => {
+      state.editingInventoryId = null;
+      render();
+    });
+  }
+
+  const clearInventoryForm = document.querySelector("[data-action='clear-inventory-form']");
+  if (clearInventoryForm) {
+    clearInventoryForm.addEventListener("click", () => {
+      document.querySelector("#inventoryName").value = "";
+      document.querySelector("#inventoryModel").value = "";
+      document.querySelector("#inventoryLocation").value = "";
+      document.querySelector("#inventoryQuantity").value = "";
+      document.querySelector("#inventoryMinQuantity").value = "1";
+      document.querySelector("#inventoryUnit").value = "개";
     });
   }
 
@@ -810,6 +1119,7 @@ function render() {
   if (state.view === "list") app.innerHTML = renderList();
   if (state.view === "search") app.innerHTML = renderSearch();
   if (state.view === "templates") app.innerHTML = renderTemplates();
+  if (state.view === "inventory") app.innerHTML = renderInventory();
   if (state.view === "detail") app.innerHTML = renderDetail();
   attachEvents();
 }
