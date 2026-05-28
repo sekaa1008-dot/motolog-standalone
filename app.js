@@ -149,6 +149,7 @@ function paymentSummary(logs) {
 }
 
 function appShell(content) {
+  const canInstall = Boolean(window.installPromptEvent) && !window.matchMedia("(display-mode: standalone)").matches;
   return `
     <div class="shell">
       <header class="topbar">
@@ -159,7 +160,10 @@ function appShell(content) {
             <p>오토바이 정비 작업 일지</p>
           </div>
         </div>
-        <button class="text-button" data-action="seed">샘플 추가</button>
+        <div class="top-actions">
+          ${canInstall ? `<button class="text-button" data-action="install-app">앱 설치</button>` : ""}
+          <button class="text-button" data-action="seed">샘플 추가</button>
+        </div>
       </header>
       <main class="content">${content}</main>
       <nav class="bottom-nav">
@@ -724,6 +728,17 @@ function attachEvents() {
   const seed = document.querySelector("[data-action='seed']");
   if (seed) seed.addEventListener("click", seedData);
 
+  const installApp = document.querySelector("[data-action='install-app']");
+  if (installApp) {
+    installApp.addEventListener("click", async () => {
+      if (!window.installPromptEvent) return;
+      window.installPromptEvent.prompt();
+      await window.installPromptEvent.userChoice.catch(() => {});
+      window.installPromptEvent = null;
+      render();
+    });
+  }
+
   const takePhoto = document.querySelector("[data-action='take-photo']");
   if (takePhoto) takePhoto.addEventListener("click", openPhotoCamera);
 
@@ -753,5 +768,16 @@ function render() {
   if (state.view === "detail") app.innerHTML = renderDetail();
   attachEvents();
 }
+
+window.addEventListener("beforeinstallprompt", (event) => {
+  event.preventDefault();
+  window.installPromptEvent = event;
+  render();
+});
+
+window.addEventListener("appinstalled", () => {
+  window.installPromptEvent = null;
+  render();
+});
 
 render();

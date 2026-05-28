@@ -1,0 +1,19 @@
+{
+  "name": "적자생존 - 오토바이 정비 작업 일지",
+  "short_name": "적자생존",
+  "description": "오토바이 정비소용 작업 일지",
+  "start_url": "./?source=pwa",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#08090c",
+  "theme_color": "#08090c",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "./icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

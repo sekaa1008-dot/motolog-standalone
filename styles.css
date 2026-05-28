@@ -98,6 +98,13 @@ button {
   font-size: 11px;
 }
 
+.top-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
 .content {
   padding: 18px 16px 96px;
 }
