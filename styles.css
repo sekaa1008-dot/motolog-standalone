@@ -238,6 +238,17 @@ button {
   padding: 4px;
 }
 
+.danger-text {
+  color: var(--red);
+}
+
+.item-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
 .quick-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;

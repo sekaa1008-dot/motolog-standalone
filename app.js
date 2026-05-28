@@ -14,6 +14,7 @@ const state = {
   detailId: null,
   paymentMethod: "card",
   search: "",
+  editingTemplateId: null,
 };
 
 function todayStr() {
@@ -118,6 +119,7 @@ function setView(view, options = {}) {
   state.editingId = options.editingId ?? null;
   state.detailId = options.detailId ?? null;
   state.paymentMethod = options.paymentMethod ?? "card";
+  state.editingTemplateId = options.editingTemplateId ?? null;
   window.scrollTo({ top: 0, behavior: "smooth" });
   render();
 }
@@ -304,15 +306,10 @@ function renderForm() {
           <label for="workDate">작업 날짜</label>
           <input class="input" id="workDate" name="workDate" type="date" value="${editing?.workDate ?? todayStr()}" />
         </div>
-        <div class="field">
-          <label for="vehicleNumber">차량 번호</label>
-          <input class="input" id="vehicleNumber" name="vehicleNumber" placeholder="예: 12가3456" value="${escapeHtml(editing?.vehicleNumber ?? "")}" />
-        </div>
-        <div class="vehicle-history ${historyHtml ? "show" : ""}" id="vehicleHistory">${historyHtml}</div>
         <div class="photo-box">
           <div>
             <h4>작업 사진</h4>
-            <p>번호판이나 작업 부위를 촬영하거나 갤러리에서 선택해 기록에 남길 수 있습니다.</p>
+            <p>먼저 번호판이나 작업 부위를 찍어두면, 나중에 차량번호와 작업 내용을 확인하기 쉽습니다.</p>
           </div>
           <div class="photo-actions">
             <button type="button" class="button primary" data-action="take-photo">카메라 촬영</button>
@@ -326,6 +323,11 @@ function renderForm() {
           </div>
           <button type="button" class="button danger ${editing?.photoDataUrl ? "" : "hidden"}" id="removePhotoButton" data-action="remove-photo">사진 삭제</button>
         </div>
+        <div class="field">
+          <label for="vehicleNumber">차량 번호</label>
+          <input class="input" id="vehicleNumber" name="vehicleNumber" placeholder="예: 12가3456" value="${escapeHtml(editing?.vehicleNumber ?? "")}" />
+        </div>
+        <div class="vehicle-history ${historyHtml ? "show" : ""}" id="vehicleHistory">${historyHtml}</div>
         <div class="field">
           <label for="workContent">작업 내용</label>
           <textarea class="textarea" id="workContent" name="workContent" placeholder="예: 엔진오일 교체, 앞 브레이크 패드 교체">${escapeHtml(editing?.workContent ?? "")}</textarea>
@@ -400,26 +402,30 @@ function renderSearch() {
 
 function renderTemplates() {
   const templates = getTemplates();
+  const editingTemplate = templates.find((template) => template.id === state.editingTemplateId);
   return appShell(`
     <section class="section" style="margin-top:0">
       <div class="section-head">
-        <h3>작업 템플릿</h3>
+        <h3>${editingTemplate ? "템플릿 수정" : "작업 템플릿"}</h3>
         <button class="text-button" data-view="new">기록 작성</button>
       </div>
       <form class="form" id="templateForm">
         <div class="field">
           <label for="templateLabel">템플릿 이름</label>
-          <input class="input" id="templateLabel" placeholder="예: 엔진오일 교체" />
+          <input class="input" id="templateLabel" placeholder="예: 엔진오일 교체" value="${escapeHtml(editingTemplate?.label ?? "")}" />
         </div>
         <div class="field">
           <label for="templateContent">작업 내용</label>
-          <textarea class="textarea" id="templateContent" placeholder="반복 입력할 작업 내용을 적어주세요."></textarea>
+          <textarea class="textarea" id="templateContent" placeholder="반복 입력할 작업 내용을 적어주세요.">${escapeHtml(editingTemplate?.content ?? "")}</textarea>
         </div>
         <div class="field">
           <label for="templateAmount">기본 금액</label>
-          <input class="input" id="templateAmount" inputmode="numeric" placeholder="0" />
+          <input class="input" id="templateAmount" inputmode="numeric" placeholder="0" value="${editingTemplate?.amount ? money(editingTemplate.amount) : ""}" />
         </div>
-        <button class="button primary" type="submit">템플릿 저장</button>
+        <div class="form-actions">
+          ${editingTemplate ? `<button class="button" type="button" data-action="cancel-template-edit">수정 취소</button>` : `<button class="button" type="button" data-action="clear-template-form">입력 지우기</button>`}
+          <button class="button primary" type="submit">${editingTemplate ? "수정 저장" : "템플릿 저장"}</button>
+        </div>
       </form>
       <div class="section">
         <div class="section-head"><h3>저장된 템플릿</h3></div>
@@ -431,7 +437,10 @@ function renderTemplates() {
                   <div class="chip-row"><span class="chip">${money(template.amount)}원</span><span class="chip">사용 ${template.usage ?? 0}회</span></div>
                   <p class="log-title"><strong>${escapeHtml(template.label)}</strong><br>${escapeHtml(template.content)}</p>
                 </div>
-                <button class="text-button" data-template-delete="${template.id}">삭제</button>
+                <div class="item-actions">
+                  <button class="text-button" data-template-edit="${template.id}">수정</button>
+                  <button class="text-button danger-text" data-template-delete="${template.id}">삭제</button>
+                </div>
               </div>
             </div>
           `).join("") : emptyState("저장된 템플릿이 없습니다.")}
@@ -572,8 +581,18 @@ function handleTemplateSubmit(event) {
     showToast("템플릿 이름과 내용을 입력해주세요.");
     return;
   }
-  saveTemplates([{ id: Date.now(), label, content, amount, usage: 0 }, ...getTemplates()]);
-  showToast("템플릿을 저장했습니다.");
+  if (state.editingTemplateId) {
+    saveTemplates(getTemplates().map((template) => (
+      template.id === state.editingTemplateId
+        ? { ...template, label, content, amount }
+        : template
+    )));
+    state.editingTemplateId = null;
+    showToast("템플릿을 수정했습니다.");
+  } else {
+    saveTemplates([{ id: Date.now(), label, content, amount, usage: 0 }, ...getTemplates()]);
+    showToast("템플릿을 저장했습니다.");
+  }
   render();
 }
 
@@ -615,6 +634,7 @@ async function handlePhotoFile(file) {
     preview.classList.add("show");
     removeButton?.classList.remove("hidden");
     showToast("사진이 추가되었습니다.");
+    document.querySelector("#vehicleNumber")?.focus();
   } catch {
     showToast("사진을 불러오지 못했습니다.");
   }
@@ -700,7 +720,15 @@ function attachEvents() {
   document.querySelectorAll("[data-template-delete]").forEach((button) => {
     button.addEventListener("click", () => {
       saveTemplates(getTemplates().filter((template) => template.id !== Number(button.dataset.templateDelete)));
+      if (state.editingTemplateId === Number(button.dataset.templateDelete)) state.editingTemplateId = null;
       showToast("템플릿을 삭제했습니다.");
+      render();
+    });
+  });
+
+  document.querySelectorAll("[data-template-edit]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.editingTemplateId = Number(button.dataset.templateEdit);
       render();
     });
   });
@@ -710,6 +738,23 @@ function attachEvents() {
 
   const templateForm = document.querySelector("#templateForm");
   if (templateForm) templateForm.addEventListener("submit", handleTemplateSubmit);
+
+  const cancelTemplateEdit = document.querySelector("[data-action='cancel-template-edit']");
+  if (cancelTemplateEdit) {
+    cancelTemplateEdit.addEventListener("click", () => {
+      state.editingTemplateId = null;
+      render();
+    });
+  }
+
+  const clearTemplateForm = document.querySelector("[data-action='clear-template-form']");
+  if (clearTemplateForm) {
+    clearTemplateForm.addEventListener("click", () => {
+      document.querySelector("#templateLabel").value = "";
+      document.querySelector("#templateContent").value = "";
+      document.querySelector("#templateAmount").value = "";
+    });
+  }
 
   const searchInput = document.querySelector("#searchInput");
   if (searchInput) {
