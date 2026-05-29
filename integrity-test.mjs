@@ -24,6 +24,8 @@ const checks = [
   ["service worker cache", files.sw.includes("CACHE_NAME") && files.sw.includes("app.js")],
   ["photo styles", files.css.includes(".photo-box") && files.css.includes(".detail-photo")],
   ["template action styles", files.css.includes(".item-actions") && files.css.includes(".danger-text")],
+  ["list delete action", files.app.includes("class=\"list-actions\"") && files.app.includes("data-delete=\"${log.id}\"")],
+  ["list open button", files.app.includes("class=\"log-open\"") && files.css.includes(".log-open")],
   ["inventory store key", files.app.includes("motolog.inventory.v1")],
   ["inventory view", files.app.includes("function renderInventory") && files.app.includes("data-view=\"inventory\"")],
   ["parts saved with log", files.app.includes("partsUsed") && files.app.includes("partsForFormData")],
@@ -34,7 +36,7 @@ const checks = [
   ["back four search", files.app.includes("endsWith(digits.slice(-4))")],
   ["daily close summary", files.app.includes("일일 마감 요약") && files.app.includes("partsSummary")],
   ["stock warning styles", files.css.includes(".stock-danger") && files.css.includes(".stock-warning")],
-  ["service worker cache bumped", files.sw.includes("motolog-pwa-v5")],
+  ["service worker cache bumped", files.sw.includes("motolog-pwa-v6")],
 ];
 
 const failed = checks.filter(([, ok]) => !ok);

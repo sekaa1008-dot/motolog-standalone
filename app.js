@@ -328,8 +328,8 @@ function navButton(view, icon, label) {
 
 function logCard(log) {
   return `
-    <button class="log-item" data-detail="${log.id}">
-      <div class="log-main">
+    <div class="log-item">
+      <button class="log-open" data-detail="${log.id}">
         <div>
           <div class="chip-row">
             <span class="chip">${escapeHtml(log.workDate)}</span>
@@ -339,8 +339,12 @@ function logCard(log) {
           <p class="log-title">${escapeHtml(log.workContent).replaceAll("\n", "<br>")}</p>
         </div>
         <span class="amount">${money(log.amount)}원</span>
+      </button>
+      <div class="list-actions">
+        <button class="text-button" data-edit="${log.id}">수정</button>
+        <button class="text-button danger-text" data-delete="${log.id}">삭제</button>
       </div>
-    </button>
+    </div>
   `;
 }
 
