@@ -286,6 +286,57 @@ function renderVehicleHistory(vehicleNumber, excludeId = null) {
   `;
 }
 
+function cleanPlateText(text) {
+  const compact = String(text || "")
+    .toUpperCase()
+    .replaceAll("O", "0")
+    .replaceAll("I", "1")
+    .replaceAll("|", "1")
+    .replace(/[^\dA-Z가-힣]/g, "");
+  const carPlate = compact.match(/\d{2,3}[가-힣]\d{4}/);
+  if (carPlate) return carPlate[0];
+  const bikePlate = compact.match(/(?:서울|부산|대구|인천|광주|대전|울산|세종|경기|강원|충북|충남|전북|전남|경북|경남|제주)[가-힣]{1,6}\d{4}/);
+  if (bikePlate) return bikePlate[0];
+  const lastFour = compact.match(/\d{4}/);
+  return lastFour ? lastFour[0] : "";
+}
+
+function loadTesseract() {
+  if (window.Tesseract) return Promise.resolve(window.Tesseract);
+  if (window.tesseractLoading) return window.tesseractLoading;
+  window.tesseractLoading = new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = "https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js";
+    script.onload = () => resolve(window.Tesseract);
+    script.onerror = reject;
+    document.head.appendChild(script);
+  });
+  return window.tesseractLoading;
+}
+
+async function scanPlateFromPhoto(dataUrl) {
+  if (!dataUrl) return;
+  const vehicleInput = document.querySelector("#vehicleNumber");
+  if (!vehicleInput || vehicleInput.value.trim()) return;
+  const status = document.querySelector("#plateScanStatus");
+  if (status) status.textContent = "번호판을 읽는 중입니다...";
+  try {
+    const tesseract = await loadTesseract();
+    const result = await tesseract.recognize(dataUrl, "kor+eng");
+    const plate = cleanPlateText(result?.data?.text || "");
+    if (plate) {
+      vehicleInput.value = plate;
+      updateVehicleHistory();
+      if (status) status.textContent = `인식 결과: ${plate}`;
+      showToast("차량번호를 자동 입력했습니다.");
+    } else {
+      if (status) status.textContent = "자동 인식이 어려워 수동 입력이 필요합니다.";
+    }
+  } catch {
+    if (status) status.textContent = "자동 인식을 사용할 수 없습니다. 수동 입력해주세요.";
+  }
+}
+
 function setView(view, options = {}) {
   state.view = view;
   state.editingId = options.editingId ?? null;
@@ -543,6 +594,7 @@ function renderForm() {
           <div class="photo-preview ${editing?.photoDataUrl ? "show" : ""}" id="photoPreview">
             ${editing?.photoDataUrl ? `<img src="${editing.photoDataUrl}" alt="작업 사진">` : ""}
           </div>
+          <p class="scan-status" id="plateScanStatus">${editing?.photoDataUrl && !editing?.vehicleNumber ? "사진에서 번호판 자동 인식을 시도할 수 있습니다." : ""}</p>
           <button type="button" class="button danger ${editing?.photoDataUrl ? "" : "hidden"}" id="removePhotoButton" data-action="remove-photo">사진 삭제</button>
         </div>
         <div class="field">
@@ -561,6 +613,22 @@ function renderForm() {
               <button type="button" class="chip" data-template="${template.id}">${escapeHtml(template.label)}</button>
             `).join("")}
           </div>
+        </div>
+        <div class="field">
+          <label for="amount">금액</label>
+          <input class="input" id="amount" name="amount" inputmode="numeric" placeholder="0" value="${editing ? money(editing.amount) : ""}" />
+        </div>
+        <div class="field">
+          <label>결제 방식</label>
+          <div class="segmented">
+            ${Object.entries(paymentLabels).map(([key, label]) => `
+              <button type="button" class="segment ${state.paymentMethod === key ? "active" : ""}" data-payment="${key}">${label}</button>
+            `).join("")}
+          </div>
+        </div>
+        <div class="form-actions quick-save-actions">
+          ${editing ? `<button type="button" class="button danger" data-delete="${editing.id}">삭제</button>` : `<button type="button" class="button" data-view="templates">템플릿 관리</button>`}
+          <button type="submit" class="button primary">${editing ? "수정 저장" : "기록 저장"}</button>
         </div>
         <div class="field">
           <label>사용 부품 / 재고 차감</label>
@@ -585,24 +653,8 @@ function renderForm() {
           </div>
         </div>
         <div class="field">
-          <label for="amount">금액</label>
-          <input class="input" id="amount" name="amount" inputmode="numeric" placeholder="0" value="${editing ? money(editing.amount) : ""}" />
-        </div>
-        <div class="field">
-          <label>결제 방식</label>
-          <div class="segmented">
-            ${Object.entries(paymentLabels).map(([key, label]) => `
-              <button type="button" class="segment ${state.paymentMethod === key ? "active" : ""}" data-payment="${key}">${label}</button>
-            `).join("")}
-          </div>
-        </div>
-        <div class="field">
           <label for="ownerPhone">고객 연락처</label>
           <input class="input" id="ownerPhone" name="ownerPhone" placeholder="선택 입력" value="${escapeHtml(editing?.ownerPhone ?? "")}" />
-        </div>
-        <div class="form-actions">
-          ${editing ? `<button type="button" class="button danger" data-delete="${editing.id}">삭제</button>` : `<button type="button" class="button" data-view="templates">템플릿 관리</button>`}
-          <button type="submit" class="button primary">${editing ? "수정 저장" : "기록 저장"}</button>
         </div>
       </form>
     </section>
@@ -1001,7 +1053,8 @@ async function handlePhotoFile(file) {
     preview.classList.add("show");
     removeButton?.classList.remove("hidden");
     showToast("사진이 추가되었습니다.");
-    document.querySelector("#vehicleNumber")?.focus();
+    scanPlateFromPhoto(dataUrl);
+    document.querySelector("#workContent")?.focus();
   } catch {
     showToast("사진을 불러오지 못했습니다.");
   }
@@ -1016,6 +1069,8 @@ function removePhoto() {
     preview.innerHTML = "";
     preview.classList.remove("show");
   }
+  const status = document.querySelector("#plateScanStatus");
+  if (status) status.textContent = "";
   removeButton?.classList.add("hidden");
   showToast("사진을 삭제했습니다.");
 }

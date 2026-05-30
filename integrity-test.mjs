@@ -18,8 +18,9 @@ const checks = [
   ["photo gallery action", files.app.includes("data-action=\"choose-photo\"")],
   ["photo saved with log", files.app.includes("photoDataUrl: String(data.get(\"photoDataUrl\")")],
   ["photo shown in detail", files.app.includes("detail-photo")],
-  ["OCR removed", !/Tesseract|runPlateOcr|normalizePlateText|번호판 인식하기/.test(files.app)],
+  ["photo plate scan", files.app.includes("scanPlateFromPhoto") && files.app.includes("cleanPlateText") && files.app.includes("tesseract.js")],
   ["photo before vehicle field", files.app.indexOf("photo-box") < files.app.indexOf("for=\"vehicleNumber\"")],
+  ["quick save before inventory", files.app.indexOf("quick-save-actions") < files.app.indexOf("사용 부품 / 재고 차감")],
   ["PWA manifest linked", files.html.includes("manifest.webmanifest")],
   ["service worker registered", files.html.includes("serviceWorker.register")],
   ["manifest parseable", Boolean(JSON.parse(files.manifest).start_url)],
@@ -38,7 +39,7 @@ const checks = [
   ["back four search", files.app.includes("endsWith(digits.slice(-4))")],
   ["daily close summary", files.app.includes("일일 마감 요약") && files.app.includes("partsSummary")],
   ["stock warning styles", files.css.includes(".stock-danger") && files.css.includes(".stock-warning")],
-  ["service worker cache bumped", files.sw.includes("motolog-pwa-v7")],
+  ["service worker cache bumped", files.sw.includes("motolog-pwa-v8")],
 ];
 
 const failed = checks.filter(([, ok]) => !ok);
