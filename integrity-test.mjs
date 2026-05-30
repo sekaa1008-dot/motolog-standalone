@@ -12,6 +12,8 @@ const checks = [
   ["template edit button", files.app.includes("data-template-edit")],
   ["template edit state", files.app.includes("editingTemplateId")],
   ["template cancel edit", files.app.includes("cancel-template-edit")],
+  ["estimate template seed", files.app.includes("estimateTemplates") && files.app.includes("프로자350 견적 전체")],
+  ["estimate template prices", files.app.includes("견적 피렐리 뒷타이어") && files.app.includes("amount: 150000") && files.app.includes("amount: 475000")],
   ["photo camera action", files.app.includes("data-action=\"take-photo\"")],
   ["photo gallery action", files.app.includes("data-action=\"choose-photo\"")],
   ["photo saved with log", files.app.includes("photoDataUrl: String(data.get(\"photoDataUrl\")")],
@@ -36,7 +38,7 @@ const checks = [
   ["back four search", files.app.includes("endsWith(digits.slice(-4))")],
   ["daily close summary", files.app.includes("일일 마감 요약") && files.app.includes("partsSummary")],
   ["stock warning styles", files.css.includes(".stock-danger") && files.css.includes(".stock-warning")],
-  ["service worker cache bumped", files.sw.includes("motolog-pwa-v6")],
+  ["service worker cache bumped", files.sw.includes("motolog-pwa-v7")],
 ];
 
 const failed = checks.filter(([, ok]) => !ok);

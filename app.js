@@ -1,5 +1,6 @@
 const STORE_KEY = "motolog.logs.v1";
 const TEMPLATE_KEY = "motolog.templates.v1";
+const TEMPLATE_SEED_KEY = "motolog.templates.estimate.20260530";
 const INVENTORY_KEY = "motolog.inventory.v1";
 
 const paymentLabels = {
@@ -66,15 +67,62 @@ function saveLogs(logs) {
   localStorage.setItem(STORE_KEY, JSON.stringify(logs));
 }
 
+function estimateTemplates() {
+  return [
+    {
+      id: "estimate-proza350-full",
+      label: "프로자350 견적 전체",
+      content: [
+        "엔진오일 교체",
+        "오일필터 교체",
+        "에어필터 교체",
+        "점화플러그 교체",
+        "미션오일 교체",
+        "피렐리 뒷타이어 150/70-14 교체",
+        "피렐리 앞타이어 120/70-15 교체",
+        "사이드스탠드 교체",
+        "브레이크 좌우 위치 변경",
+        "사이드스탠드 발판 장착",
+        "머플러 가스켓 누기 확인 - 다음 방문 서비스 수리",
+      ].join("\n"),
+      amount: 475000,
+      usage: 0,
+    },
+    { id: "estimate-engine-oil", label: "견적 엔진오일", content: "엔진오일 교체", amount: 15000, usage: 0 },
+    { id: "estimate-oil-filter", label: "견적 오일필터", content: "오일필터 교체", amount: 25000, usage: 0 },
+    { id: "estimate-air-filter", label: "견적 에어필터", content: "에어필터 교체", amount: 25000, usage: 0 },
+    { id: "estimate-spark-plug", label: "견적 점화플러그", content: "점화플러그 교체", amount: 30000, usage: 0 },
+    { id: "estimate-mission-oil", label: "견적 미션오일", content: "미션오일 교체", amount: 20000, usage: 0 },
+    { id: "estimate-rear-tire", label: "견적 피렐리 뒷타이어", content: "피렐리 뒷타이어 150/70-14 교체", amount: 150000, usage: 0 },
+    { id: "estimate-front-tire", label: "견적 피렐리 앞타이어", content: "피렐리 앞타이어 120/70-15 교체", amount: 130000, usage: 0 },
+    { id: "estimate-side-stand", label: "견적 사이드스탠드", content: "사이드스탠드 교체", amount: 50000, usage: 0 },
+    { id: "estimate-brake-position", label: "견적 브레이크 좌우변경", content: "브레이크 좌우 위치 변경", amount: 30000, usage: 0 },
+    { id: "estimate-stand-foot", label: "견적 사이드스탠드 발판", content: "사이드스탠드 발판 장착", amount: 20000, usage: 0 },
+    { id: "estimate-muffler-gasket", label: "견적 머플러 가스켓", content: "머플러 가스켓 누기 확인 - 다음 방문 서비스 수리", amount: 0, usage: 0 },
+  ];
+}
+
+function mergeEstimateTemplates(templates) {
+  if (localStorage.getItem(TEMPLATE_SEED_KEY)) return templates;
+  const seen = new Set(templates.map((template) => normalizeText(template.label)));
+  const additions = estimateTemplates().filter((template) => !seen.has(normalizeText(template.label)));
+  const next = [...additions, ...templates];
+  localStorage.setItem(TEMPLATE_KEY, JSON.stringify(next));
+  localStorage.setItem(TEMPLATE_SEED_KEY, "done");
+  return next;
+}
+
 function getTemplates() {
   const existing = readJson(TEMPLATE_KEY, []);
-  if (existing.length) return existing;
+  if (existing.length) return mergeEstimateTemplates(existing);
   const defaults = [
     { id: 1, label: "엔진오일 교체", content: "엔진오일 교체", amount: 45000, usage: 0 },
     { id: 2, label: "브레이크 패드", content: "앞 브레이크 패드 교체", amount: 80000, usage: 0 },
     { id: 3, label: "타이어 점검", content: "타이어 공기압 및 마모 상태 점검", amount: 0, usage: 0 },
+    ...estimateTemplates(),
   ];
   localStorage.setItem(TEMPLATE_KEY, JSON.stringify(defaults));
+  localStorage.setItem(TEMPLATE_SEED_KEY, "done");
   return defaults;
 }
 
