@@ -286,19 +286,58 @@ function renderVehicleHistory(vehicleNumber, excludeId = null) {
   `;
 }
 
-function cleanPlateText(text) {
-  const compact = String(text || "")
+function normalizePlateOcrText(text) {
+  return String(text || "")
     .toUpperCase()
     .replaceAll("O", "0")
+    .replaceAll("Q", "0")
+    .replaceAll("D", "0")
     .replaceAll("I", "1")
+    .replaceAll("L", "1")
     .replaceAll("|", "1")
     .replace(/[^\dA-Z가-힣]/g, "");
-  const carPlate = compact.match(/\d{2,3}[가-힣]\d{4}/);
-  if (carPlate) return carPlate[0];
-  const bikePlate = compact.match(/(?:서울|부산|대구|인천|광주|대전|울산|세종|경기|강원|충북|충남|전북|전남|경북|경남|제주)[가-힣]{1,6}\d{4}/);
-  if (bikePlate) return bikePlate[0];
-  const lastFour = compact.match(/\d{4}/);
-  return lastFour ? lastFour[0] : "";
+}
+
+function plateScore(value) {
+  const text = normalizePlateOcrText(value);
+  const hasKorean = /[가-힣]/.test(text);
+  const hasFourDigits = /\d{4}$/.test(text);
+  const standardCar = /^\d{2,3}[가-힣]\d{4}$/.test(text);
+  const localBike = /^(서울|부산|대구|인천|광주|대전|울산|세종|경기|강원|충북|충남|전북|전남|경북|경남|제주)[가-힣]{1,8}\d{4}$/.test(text);
+  if (standardCar) return 100;
+  if (localBike) return 95;
+  if (hasKorean && hasFourDigits && text.length >= 5 && text.length <= 14) return 80;
+  if (hasFourDigits && text.length === 4) return 30;
+  return 0;
+}
+
+function cleanPlateText(text) {
+  const rawLines = String(text || "")
+    .split(/\n+/)
+    .map((line) => normalizePlateOcrText(line))
+    .filter(Boolean);
+  const candidates = new Set();
+  const compact = normalizePlateOcrText(text);
+  candidates.add(compact);
+
+  for (const line of rawLines) candidates.add(line);
+  for (let index = 0; index < rawLines.length - 1; index += 1) {
+    candidates.add(`${rawLines[index]}${rawLines[index + 1]}`);
+  }
+
+  const sources = [...candidates];
+  for (const source of sources) {
+    source.match(/\d{2,3}[가-힣]\d{4}/g)?.forEach((match) => candidates.add(match));
+    source.match(/(?:서울|부산|대구|인천|광주|대전|울산|세종|경기|강원|충북|충남|전북|전남|경북|경남|제주)[가-힣]{1,8}\d{4}/g)?.forEach((match) => candidates.add(match));
+    source.match(/[가-힣]{1,10}\d{4}/g)?.forEach((match) => candidates.add(match));
+    source.match(/\d{4}/g)?.forEach((match) => candidates.add(match));
+  }
+
+  return [...candidates]
+    .map((candidate) => normalizePlateOcrText(candidate))
+    .filter(Boolean)
+    .filter((candidate) => plateScore(candidate) > 0)
+    .sort((a, b) => plateScore(b) - plateScore(a) || b.length - a.length)[0] || "";
 }
 
 function loadTesseract() {
@@ -314,6 +353,27 @@ function loadTesseract() {
   return window.tesseractLoading;
 }
 
+async function enhancePlateImage(dataUrl) {
+  const image = await loadImage(dataUrl);
+  const canvas = document.createElement("canvas");
+  canvas.width = image.width;
+  canvas.height = image.height;
+  const context = canvas.getContext("2d");
+  context.drawImage(image, 0, 0);
+  const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+  const data = imageData.data;
+  for (let index = 0; index < data.length; index += 4) {
+    const gray = data[index] * 0.3 + data[index + 1] * 0.59 + data[index + 2] * 0.11;
+    const contrast = Math.max(0, Math.min(255, (gray - 128) * 1.7 + 128));
+    const value = contrast > 150 ? 255 : contrast < 85 ? 0 : contrast;
+    data[index] = value;
+    data[index + 1] = value;
+    data[index + 2] = value;
+  }
+  context.putImageData(imageData, 0, 0);
+  return canvas.toDataURL("image/jpeg", 0.9);
+}
+
 async function scanPlateFromPhoto(dataUrl) {
   if (!dataUrl) return;
   const vehicleInput = document.querySelector("#vehicleNumber");
@@ -322,8 +382,16 @@ async function scanPlateFromPhoto(dataUrl) {
   if (status) status.textContent = "번호판을 읽는 중입니다...";
   try {
     const tesseract = await loadTesseract();
-    const result = await tesseract.recognize(dataUrl, "kor+eng");
-    const plate = cleanPlateText(result?.data?.text || "");
+    const enhanced = await enhancePlateImage(dataUrl);
+    const options = {
+      tessedit_pageseg_mode: "6",
+      preserve_interword_spaces: "1",
+    };
+    const [originalResult, enhancedResult] = await Promise.all([
+      tesseract.recognize(dataUrl, "kor+eng", options),
+      tesseract.recognize(enhanced, "kor+eng", options),
+    ]);
+    const plate = cleanPlateText(`${originalResult?.data?.text || ""}\n${enhancedResult?.data?.text || ""}`);
     if (plate) {
       vehicleInput.value = plate;
       updateVehicleHistory();
