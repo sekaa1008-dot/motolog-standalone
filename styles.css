@@ -597,6 +597,55 @@ button {
   display: block;
 }
 
+.plate-helper {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(255,255,255,.04);
+  padding: 12px;
+  display: grid;
+  gap: 12px;
+}
+
+.plate-helper-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.plate-helper-head strong {
+  font-size: 13px;
+}
+
+.plate-helper-head div {
+  display: flex;
+  gap: 6px;
+}
+
+.plate-token-group {
+  display: grid;
+  gap: 7px;
+}
+
+.plate-token-group > span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.plate-chip {
+  min-height: 34px;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.plate-digits {
+  font-size: 22px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-align: center;
+}
+
 .vehicle-history strong {
   display: block;
   font-size: 13px;

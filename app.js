@@ -405,6 +405,33 @@ async function scanPlateFromPhoto(dataUrl) {
   }
 }
 
+function setVehicleNumber(value) {
+  const input = document.querySelector("#vehicleNumber");
+  if (!input) return;
+  input.value = String(value || "").replace(/\s/g, "");
+  updateVehicleHistory();
+}
+
+function currentVehicleNumber() {
+  return document.querySelector("#vehicleNumber")?.value || "";
+}
+
+function applyPlateToken(token) {
+  const current = currentVehicleNumber().replace(/\s/g, "");
+  setVehicleNumber(`${current}${token}`);
+  document.querySelector("#plateDigits")?.focus();
+}
+
+function replacePlateDigits(value) {
+  const digits = String(value || "").replace(/\D/g, "").slice(0, 4);
+  const prefix = currentVehicleNumber().replace(/\d+$/g, "");
+  setVehicleNumber(`${prefix}${digits}`);
+}
+
+function deletePlateChar() {
+  setVehicleNumber(currentVehicleNumber().slice(0, -1));
+}
+
 function setView(view, options = {}) {
   state.view = view;
   state.editingId = options.editingId ?? null;
@@ -635,6 +662,9 @@ function renderForm() {
   const usedParts = new Map((editing?.partsUsed || []).map((part) => [part.inventoryId, part]));
   state.paymentMethod = editing?.paymentMethod ?? state.paymentMethod ?? "card";
   const historyHtml = renderVehicleHistory(editing?.vehicleNumber ?? "", editing?.id ?? null);
+  const regionTokens = ["경기", "서울", "인천", "부산", "대구", "대전", "광주", "울산", "제주"];
+  const cityTokens = ["수원", "성남", "용인", "화성", "안산", "안양", "부천", "고양"];
+  const letterTokens = ["가", "나", "다", "라", "마", "바", "사", "아", "자", "하", "배", "거", "노", "로"];
 
   return appShell(`
     <section class="section" style="margin-top:0">
@@ -662,12 +692,44 @@ function renderForm() {
           <div class="photo-preview ${editing?.photoDataUrl ? "show" : ""}" id="photoPreview">
             ${editing?.photoDataUrl ? `<img src="${editing.photoDataUrl}" alt="작업 사진">` : ""}
           </div>
-          <p class="scan-status" id="plateScanStatus">${editing?.photoDataUrl && !editing?.vehicleNumber ? "사진에서 번호판 자동 인식을 시도할 수 있습니다." : ""}</p>
+          <p class="scan-status" id="plateScanStatus">${editing?.photoDataUrl && !editing?.vehicleNumber ? "필요할 때 사진 스캔 보조를 사용할 수 있습니다." : ""}</p>
+          <button type="button" class="button ${editing?.photoDataUrl ? "" : "hidden"}" id="scanPhotoButton" data-action="scan-photo">사진 스캔 보조</button>
           <button type="button" class="button danger ${editing?.photoDataUrl ? "" : "hidden"}" id="removePhotoButton" data-action="remove-photo">사진 삭제</button>
         </div>
         <div class="field">
           <label for="vehicleNumber">차량 번호</label>
           <input class="input" id="vehicleNumber" name="vehicleNumber" placeholder="예: 12가3456" value="${escapeHtml(editing?.vehicleNumber ?? "")}" />
+        </div>
+        <div class="plate-helper">
+          <div class="plate-helper-head">
+            <strong>번호판 빠른 입력</strong>
+            <div>
+              <button type="button" class="text-button" data-plate-backspace>한 글자 삭제</button>
+              <button type="button" class="text-button danger-text" data-plate-clear>초기화</button>
+            </div>
+          </div>
+          <div class="field">
+            <label for="plateDigits">숫자 4자리</label>
+            <input class="input plate-digits" id="plateDigits" inputmode="numeric" maxlength="4" placeholder="예: 0591" />
+          </div>
+          <div class="plate-token-group">
+            <span>지역</span>
+            <div class="chip-row">
+              ${regionTokens.map((token) => `<button type="button" class="chip plate-chip" data-plate-token="${token}">${token}</button>`).join("")}
+            </div>
+          </div>
+          <div class="plate-token-group">
+            <span>시/구</span>
+            <div class="chip-row">
+              ${cityTokens.map((token) => `<button type="button" class="chip plate-chip" data-plate-token="${token}">${token}</button>`).join("")}
+            </div>
+          </div>
+          <div class="plate-token-group">
+            <span>한글</span>
+            <div class="chip-row">
+              ${letterTokens.map((token) => `<button type="button" class="chip plate-chip" data-plate-token="${token}">${token}</button>`).join("")}
+            </div>
+          </div>
         </div>
         <div class="vehicle-history ${historyHtml ? "show" : ""}" id="vehicleHistory">${historyHtml}</div>
         <div class="field">
@@ -1120,9 +1182,11 @@ async function handlePhotoFile(file) {
     preview.innerHTML = `<img src="${dataUrl}" alt="작업 사진">`;
     preview.classList.add("show");
     removeButton?.classList.remove("hidden");
+    document.querySelector("#scanPhotoButton")?.classList.remove("hidden");
+    const status = document.querySelector("#plateScanStatus");
+    if (status) status.textContent = "번호판 빠른 입력으로 작성하고, 필요하면 사진 스캔 보조를 눌러주세요.";
     showToast("사진이 추가되었습니다.");
-    scanPlateFromPhoto(dataUrl);
-    document.querySelector("#workContent")?.focus();
+    document.querySelector("#vehicleNumber")?.focus();
   } catch {
     showToast("사진을 불러오지 못했습니다.");
   }
@@ -1139,6 +1203,7 @@ function removePhoto() {
   }
   const status = document.querySelector("#plateScanStatus");
   if (status) status.textContent = "";
+  document.querySelector("#scanPhotoButton")?.classList.add("hidden");
   removeButton?.classList.add("hidden");
   showToast("사진을 삭제했습니다.");
 }
@@ -1344,8 +1409,35 @@ function attachEvents() {
   const removePhotoButton = document.querySelector("[data-action='remove-photo']");
   if (removePhotoButton) removePhotoButton.addEventListener("click", removePhoto);
 
+  const scanPhotoButton = document.querySelector("[data-action='scan-photo']");
+  if (scanPhotoButton) {
+    scanPhotoButton.addEventListener("click", () => {
+      const dataUrl = document.querySelector("#photoDataUrl")?.value;
+      scanPlateFromPhoto(dataUrl);
+    });
+  }
+
   const vehicleInput = document.querySelector("#vehicleNumber");
   if (vehicleInput) vehicleInput.addEventListener("input", updateVehicleHistory);
+
+  document.querySelectorAll("[data-plate-token]").forEach((button) => {
+    button.addEventListener("click", () => applyPlateToken(button.dataset.plateToken));
+  });
+
+  const plateDigits = document.querySelector("#plateDigits");
+  if (plateDigits) plateDigits.addEventListener("input", (event) => replacePlateDigits(event.target.value));
+
+  const plateBackspace = document.querySelector("[data-plate-backspace]");
+  if (plateBackspace) plateBackspace.addEventListener("click", deletePlateChar);
+
+  const plateClear = document.querySelector("[data-plate-clear]");
+  if (plateClear) {
+    plateClear.addEventListener("click", () => {
+      setVehicleNumber("");
+      const digits = document.querySelector("#plateDigits");
+      if (digits) digits.value = "";
+    });
+  }
 
   const workContent = document.querySelector("#workContent");
   if (workContent) {
