@@ -19,7 +19,8 @@ const checks = [
   ["photo saved with log", files.app.includes("photoDataUrl: String(data.get(\"photoDataUrl\")")],
   ["photo shown in detail", files.app.includes("detail-photo")],
   ["photo plate scan", files.app.includes("scanPlateFromPhoto") && files.app.includes("cleanPlateText") && files.app.includes("tesseract.js")],
-  ["plate scan is optional", files.app.includes("data-action=\"scan-photo\"") && !files.app.includes("scanPlateFromPhoto(dataUrl);\n    document.querySelector(\"#workContent\")")],
+  ["server plate OCR", files.app.includes("PLATE_OCR_ENDPOINT_KEY") && files.app.includes("recognizePlateWithServer") && files.app.includes("korean-motorcycle")],
+  ["plate scan is optional", files.app.includes("data-action=\"scan-photo-server\"") && files.app.includes("data-action=\"scan-photo-local\"")],
   ["plate korean digit parsing", files.app.includes("normalizePlateOcrText") && files.app.includes("plateScore") && files.app.includes("[가-힣]{1,10}\\d{4}")],
   ["plate image enhancement", files.app.includes("enhancePlateImage") && files.app.includes("tessedit_pageseg_mode")],
   ["plate helper input", files.app.includes("번호판 빠른 입력") && files.app.includes("data-plate-token") && files.app.includes("replacePlateDigits")],
@@ -43,7 +44,7 @@ const checks = [
   ["back four search", files.app.includes("endsWith(digits.slice(-4))")],
   ["daily close summary", files.app.includes("일일 마감 요약") && files.app.includes("partsSummary")],
   ["stock warning styles", files.css.includes(".stock-danger") && files.css.includes(".stock-warning")],
-  ["service worker cache bumped", files.sw.includes("motolog-pwa-v10")],
+  ["service worker cache bumped", files.sw.includes("motolog-pwa-v11")],
 ];
 
 const failed = checks.filter(([, ok]) => !ok);

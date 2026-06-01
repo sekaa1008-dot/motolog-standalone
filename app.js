@@ -2,6 +2,7 @@ const STORE_KEY = "motolog.logs.v1";
 const TEMPLATE_KEY = "motolog.templates.v1";
 const TEMPLATE_SEED_KEY = "motolog.templates.estimate.20260530";
 const INVENTORY_KEY = "motolog.inventory.v1";
+const PLATE_OCR_ENDPOINT_KEY = "motolog.plateOcrEndpoint.v1";
 
 const paymentLabels = {
   card: "카드",
@@ -168,6 +169,14 @@ function getInventory() {
 
 function saveInventory(items) {
   localStorage.setItem(INVENTORY_KEY, JSON.stringify(items));
+}
+
+function getPlateOcrEndpoint() {
+  return localStorage.getItem(PLATE_OCR_ENDPOINT_KEY) || "";
+}
+
+function savePlateOcrEndpoint(endpoint) {
+  localStorage.setItem(PLATE_OCR_ENDPOINT_KEY, String(endpoint || "").trim());
 }
 
 function stockClass(item) {
@@ -374,34 +383,71 @@ async function enhancePlateImage(dataUrl) {
   return canvas.toDataURL("image/jpeg", 0.9);
 }
 
-async function scanPlateFromPhoto(dataUrl) {
+async function recognizePlateLocally(dataUrl) {
+  const tesseract = await loadTesseract();
+  const enhanced = await enhancePlateImage(dataUrl);
+  const options = {
+    tessedit_pageseg_mode: "6",
+    preserve_interword_spaces: "1",
+  };
+  const [originalResult, enhancedResult] = await Promise.all([
+    tesseract.recognize(dataUrl, "kor+eng", options),
+    tesseract.recognize(enhanced, "kor+eng", options),
+  ]);
+  return cleanPlateText(`${originalResult?.data?.text || ""}\n${enhancedResult?.data?.text || ""}`);
+}
+
+async function recognizePlateWithServer(dataUrl) {
+  const endpoint = getPlateOcrEndpoint();
+  if (!endpoint) throw new Error("missing-endpoint");
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      imageDataUrl: dataUrl,
+      plateType: "korean-motorcycle",
+      expectedPattern: "지역명 + 한글 + 숫자4자리",
+    }),
+  });
+  if (!response.ok) throw new Error("server-error");
+  const payload = await response.json();
+  const raw = [
+    payload.plate,
+    payload.text,
+    ...(Array.isArray(payload.candidates) ? payload.candidates : []),
+  ].filter(Boolean).join("\n");
+  return cleanPlateText(raw);
+}
+
+async function scanPlateFromPhoto(dataUrl, mode = "server") {
   if (!dataUrl) return;
   const vehicleInput = document.querySelector("#vehicleNumber");
-  if (!vehicleInput || vehicleInput.value.trim()) return;
   const status = document.querySelector("#plateScanStatus");
-  if (status) status.textContent = "번호판을 읽는 중입니다...";
+  if (!vehicleInput) return;
+  if (mode === "server" && !getPlateOcrEndpoint()) {
+    if (status) status.textContent = "서버 OCR 주소를 먼저 입력하고 저장해주세요.";
+    showToast("서버 OCR 주소가 필요합니다.");
+    return;
+  }
+  if (status) status.textContent = mode === "server" ? "서버 전용 모델로 번호판을 읽는 중입니다..." : "기기 OCR 보조를 실행합니다...";
   try {
-    const tesseract = await loadTesseract();
-    const enhanced = await enhancePlateImage(dataUrl);
-    const options = {
-      tessedit_pageseg_mode: "6",
-      preserve_interword_spaces: "1",
-    };
-    const [originalResult, enhancedResult] = await Promise.all([
-      tesseract.recognize(dataUrl, "kor+eng", options),
-      tesseract.recognize(enhanced, "kor+eng", options),
-    ]);
-    const plate = cleanPlateText(`${originalResult?.data?.text || ""}\n${enhancedResult?.data?.text || ""}`);
+    const plate = mode === "server"
+      ? await recognizePlateWithServer(dataUrl)
+      : await recognizePlateLocally(dataUrl);
     if (plate) {
       vehicleInput.value = plate;
       updateVehicleHistory();
       if (status) status.textContent = `인식 결과: ${plate}`;
       showToast("차량번호를 자동 입력했습니다.");
-    } else {
-      if (status) status.textContent = "자동 인식이 어려워 수동 입력이 필요합니다.";
+    } else if (status) {
+      status.textContent = "인식 결과가 부족합니다. 빠른 입력으로 보정해주세요.";
     }
-  } catch {
-    if (status) status.textContent = "자동 인식을 사용할 수 없습니다. 수동 입력해주세요.";
+  } catch (error) {
+    if (status) {
+      status.textContent = error.message === "missing-endpoint"
+        ? "서버 OCR 주소가 필요합니다."
+        : "서버 인식에 실패했습니다. 빠른 입력으로 보정해주세요.";
+    }
   }
 }
 
@@ -662,6 +708,7 @@ function renderForm() {
   const usedParts = new Map((editing?.partsUsed || []).map((part) => [part.inventoryId, part]));
   state.paymentMethod = editing?.paymentMethod ?? state.paymentMethod ?? "card";
   const historyHtml = renderVehicleHistory(editing?.vehicleNumber ?? "", editing?.id ?? null);
+  const plateOcrEndpoint = getPlateOcrEndpoint();
   const regionTokens = ["경기", "서울", "인천", "부산", "대구", "대전", "광주", "울산", "제주"];
   const cityTokens = ["수원", "성남", "용인", "화성", "안산", "안양", "부천", "고양"];
   const letterTokens = ["가", "나", "다", "라", "마", "바", "사", "아", "자", "하", "배", "거", "노", "로"];
@@ -692,8 +739,18 @@ function renderForm() {
           <div class="photo-preview ${editing?.photoDataUrl ? "show" : ""}" id="photoPreview">
             ${editing?.photoDataUrl ? `<img src="${editing.photoDataUrl}" alt="작업 사진">` : ""}
           </div>
-          <p class="scan-status" id="plateScanStatus">${editing?.photoDataUrl && !editing?.vehicleNumber ? "필요할 때 사진 스캔 보조를 사용할 수 있습니다." : ""}</p>
-          <button type="button" class="button ${editing?.photoDataUrl ? "" : "hidden"}" id="scanPhotoButton" data-action="scan-photo">사진 스캔 보조</button>
+          <p class="scan-status" id="plateScanStatus">${editing?.photoDataUrl && !editing?.vehicleNumber ? "서버 OCR 주소를 연결하면 사진을 전용 모델로 인식할 수 있습니다." : ""}</p>
+          <div class="server-ocr-box">
+            <label for="plateOcrEndpoint">서버 OCR 주소</label>
+            <div class="server-ocr-row">
+              <input class="input" id="plateOcrEndpoint" placeholder="https://.../plate-ocr" value="${escapeHtml(plateOcrEndpoint)}" />
+              <button type="button" class="button" data-action="save-ocr-endpoint">저장</button>
+            </div>
+          </div>
+          <div class="photo-actions">
+            <button type="button" class="button primary ${editing?.photoDataUrl ? "" : "hidden"}" id="scanPhotoButton" data-action="scan-photo-server">서버 번호판 인식</button>
+            <button type="button" class="button ${editing?.photoDataUrl ? "" : "hidden"}" id="scanLocalButton" data-action="scan-photo-local">기기 OCR 보조</button>
+          </div>
           <button type="button" class="button danger ${editing?.photoDataUrl ? "" : "hidden"}" id="removePhotoButton" data-action="remove-photo">사진 삭제</button>
         </div>
         <div class="field">
@@ -1183,8 +1240,9 @@ async function handlePhotoFile(file) {
     preview.classList.add("show");
     removeButton?.classList.remove("hidden");
     document.querySelector("#scanPhotoButton")?.classList.remove("hidden");
+    document.querySelector("#scanLocalButton")?.classList.remove("hidden");
     const status = document.querySelector("#plateScanStatus");
-    if (status) status.textContent = "번호판 빠른 입력으로 작성하고, 필요하면 사진 스캔 보조를 눌러주세요.";
+    if (status) status.textContent = "서버 번호판 인식 또는 빠른 입력을 사용해주세요.";
     showToast("사진이 추가되었습니다.");
     document.querySelector("#vehicleNumber")?.focus();
   } catch {
@@ -1204,6 +1262,7 @@ function removePhoto() {
   const status = document.querySelector("#plateScanStatus");
   if (status) status.textContent = "";
   document.querySelector("#scanPhotoButton")?.classList.add("hidden");
+  document.querySelector("#scanLocalButton")?.classList.add("hidden");
   removeButton?.classList.add("hidden");
   showToast("사진을 삭제했습니다.");
 }
@@ -1409,11 +1468,27 @@ function attachEvents() {
   const removePhotoButton = document.querySelector("[data-action='remove-photo']");
   if (removePhotoButton) removePhotoButton.addEventListener("click", removePhoto);
 
-  const scanPhotoButton = document.querySelector("[data-action='scan-photo']");
+  const saveOcrEndpoint = document.querySelector("[data-action='save-ocr-endpoint']");
+  if (saveOcrEndpoint) {
+    saveOcrEndpoint.addEventListener("click", () => {
+      savePlateOcrEndpoint(document.querySelector("#plateOcrEndpoint")?.value || "");
+      showToast("서버 OCR 주소를 저장했습니다.");
+    });
+  }
+
+  const scanPhotoButton = document.querySelector("[data-action='scan-photo-server']");
   if (scanPhotoButton) {
     scanPhotoButton.addEventListener("click", () => {
       const dataUrl = document.querySelector("#photoDataUrl")?.value;
-      scanPlateFromPhoto(dataUrl);
+      scanPlateFromPhoto(dataUrl, "server");
+    });
+  }
+
+  const scanLocalButton = document.querySelector("[data-action='scan-photo-local']");
+  if (scanLocalButton) {
+    scanLocalButton.addEventListener("click", () => {
+      const dataUrl = document.querySelector("#photoDataUrl")?.value;
+      scanPlateFromPhoto(dataUrl, "local");
     });
   }
 
