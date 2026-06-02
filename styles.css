@@ -434,31 +434,6 @@ button {
   font-weight: 700;
 }
 
-.server-ocr-box {
-  border: 1px solid var(--line);
-  border-radius: 13px;
-  background: rgba(255,255,255,.04);
-  padding: 10px;
-  display: grid;
-  gap: 7px;
-}
-
-.server-ocr-box label {
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 800;
-}
-
-.server-ocr-row {
-  display: grid;
-  grid-template-columns: 1fr 76px;
-  gap: 8px;
-}
-
-.server-ocr-row .button {
-  min-height: 46px;
-}
-
 .photo-actions {
   display: grid;
   grid-template-columns: 1fr 1fr;
