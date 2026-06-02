@@ -428,12 +428,6 @@ button {
   line-height: 1.45;
 }
 
-.photo-box .scan-status {
-  margin: 0;
-  color: var(--primary-2);
-  font-weight: 700;
-}
-
 .photo-actions {
   display: grid;
   grid-template-columns: 1fr 1fr;

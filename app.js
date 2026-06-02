@@ -286,129 +286,6 @@ function renderVehicleHistory(vehicleNumber, excludeId = null) {
   `;
 }
 
-function normalizePlateOcrText(text) {
-  return String(text || "")
-    .toUpperCase()
-    .replaceAll("O", "0")
-    .replaceAll("Q", "0")
-    .replaceAll("D", "0")
-    .replaceAll("I", "1")
-    .replaceAll("L", "1")
-    .replaceAll("|", "1")
-    .replace(/[^\dA-Z가-힣]/g, "");
-}
-
-function plateScore(value) {
-  const text = normalizePlateOcrText(value);
-  const hasKorean = /[가-힣]/.test(text);
-  const hasFourDigits = /\d{4}$/.test(text);
-  const standardCar = /^\d{2,3}[가-힣]\d{4}$/.test(text);
-  const localBike = /^(서울|부산|대구|인천|광주|대전|울산|세종|경기|강원|충북|충남|전북|전남|경북|경남|제주)[가-힣]{1,8}\d{4}$/.test(text);
-  if (standardCar) return 100;
-  if (localBike) return 95;
-  if (hasKorean && hasFourDigits && text.length >= 5 && text.length <= 14) return 80;
-  if (hasFourDigits && text.length === 4) return 30;
-  return 0;
-}
-
-function cleanPlateText(text) {
-  const rawLines = String(text || "")
-    .split(/\n+/)
-    .map((line) => normalizePlateOcrText(line))
-    .filter(Boolean);
-  const candidates = new Set();
-  const compact = normalizePlateOcrText(text);
-  candidates.add(compact);
-
-  for (const line of rawLines) candidates.add(line);
-  for (let index = 0; index < rawLines.length - 1; index += 1) {
-    candidates.add(`${rawLines[index]}${rawLines[index + 1]}`);
-  }
-
-  const sources = [...candidates];
-  for (const source of sources) {
-    source.match(/\d{2,3}[가-힣]\d{4}/g)?.forEach((match) => candidates.add(match));
-    source.match(/(?:서울|부산|대구|인천|광주|대전|울산|세종|경기|강원|충북|충남|전북|전남|경북|경남|제주)[가-힣]{1,8}\d{4}/g)?.forEach((match) => candidates.add(match));
-    source.match(/[가-힣]{1,10}\d{4}/g)?.forEach((match) => candidates.add(match));
-    source.match(/\d{4}/g)?.forEach((match) => candidates.add(match));
-  }
-
-  return [...candidates]
-    .map((candidate) => normalizePlateOcrText(candidate))
-    .filter(Boolean)
-    .filter((candidate) => plateScore(candidate) > 0)
-    .sort((a, b) => plateScore(b) - plateScore(a) || b.length - a.length)[0] || "";
-}
-
-function loadTesseract() {
-  if (window.Tesseract) return Promise.resolve(window.Tesseract);
-  if (window.tesseractLoading) return window.tesseractLoading;
-  window.tesseractLoading = new Promise((resolve, reject) => {
-    const script = document.createElement("script");
-    script.src = "https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js";
-    script.onload = () => resolve(window.Tesseract);
-    script.onerror = reject;
-    document.head.appendChild(script);
-  });
-  return window.tesseractLoading;
-}
-
-async function enhancePlateImage(dataUrl) {
-  const image = await loadImage(dataUrl);
-  const canvas = document.createElement("canvas");
-  canvas.width = image.width;
-  canvas.height = image.height;
-  const context = canvas.getContext("2d");
-  context.drawImage(image, 0, 0);
-  const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
-  const data = imageData.data;
-  for (let index = 0; index < data.length; index += 4) {
-    const gray = data[index] * 0.3 + data[index + 1] * 0.59 + data[index + 2] * 0.11;
-    const contrast = Math.max(0, Math.min(255, (gray - 128) * 1.7 + 128));
-    const value = contrast > 150 ? 255 : contrast < 85 ? 0 : contrast;
-    data[index] = value;
-    data[index + 1] = value;
-    data[index + 2] = value;
-  }
-  context.putImageData(imageData, 0, 0);
-  return canvas.toDataURL("image/jpeg", 0.9);
-}
-
-async function recognizePlateLocally(dataUrl) {
-  const tesseract = await loadTesseract();
-  const enhanced = await enhancePlateImage(dataUrl);
-  const options = {
-    tessedit_pageseg_mode: "6",
-    preserve_interword_spaces: "1",
-  };
-  const [originalResult, enhancedResult] = await Promise.all([
-    tesseract.recognize(dataUrl, "kor+eng", options),
-    tesseract.recognize(enhanced, "kor+eng", options),
-  ]);
-  return cleanPlateText(`${originalResult?.data?.text || ""}\n${enhancedResult?.data?.text || ""}`);
-}
-
-async function scanPlateFromPhoto(dataUrl) {
-  if (!dataUrl) return;
-  const vehicleInput = document.querySelector("#vehicleNumber");
-  const status = document.querySelector("#plateScanStatus");
-  if (!vehicleInput) return;
-  if (status) status.textContent = "기기 OCR 보조를 실행합니다...";
-  try {
-    const plate = await recognizePlateLocally(dataUrl);
-    if (plate) {
-      vehicleInput.value = plate;
-      updateVehicleHistory();
-      if (status) status.textContent = `인식 결과: ${plate}`;
-      showToast("차량번호를 자동 입력했습니다.");
-    } else if (status) {
-      status.textContent = "인식 결과가 부족합니다. 빠른 입력으로 보정해주세요.";
-    }
-  } catch {
-    if (status) status.textContent = "기기 OCR에 실패했습니다. 빠른 입력으로 보정해주세요.";
-  }
-}
-
 function setVehicleNumber(value) {
   const input = document.querySelector("#vehicleNumber");
   if (!input) return;
@@ -695,10 +572,6 @@ function renderForm() {
           <input id="photoDataUrl" name="photoDataUrl" type="hidden" value="${escapeHtml(editing?.photoDataUrl ?? "")}" />
           <div class="photo-preview ${editing?.photoDataUrl ? "show" : ""}" id="photoPreview">
             ${editing?.photoDataUrl ? `<img src="${editing.photoDataUrl}" alt="작업 사진">` : ""}
-          </div>
-          <p class="scan-status" id="plateScanStatus">${editing?.photoDataUrl && !editing?.vehicleNumber ? "필요하면 기기 OCR 보조를 사용할 수 있습니다." : ""}</p>
-          <div class="photo-actions">
-            <button type="button" class="button ${editing?.photoDataUrl ? "" : "hidden"}" id="scanLocalButton" data-action="scan-photo-local">기기 OCR 보조</button>
           </div>
           <button type="button" class="button danger ${editing?.photoDataUrl ? "" : "hidden"}" id="removePhotoButton" data-action="remove-photo">사진 삭제</button>
         </div>
@@ -1188,9 +1061,6 @@ async function handlePhotoFile(file) {
     preview.innerHTML = `<img src="${dataUrl}" alt="작업 사진">`;
     preview.classList.add("show");
     removeButton?.classList.remove("hidden");
-    document.querySelector("#scanLocalButton")?.classList.remove("hidden");
-    const status = document.querySelector("#plateScanStatus");
-    if (status) status.textContent = "번호판 빠른 입력으로 작성하고, 필요하면 기기 OCR 보조를 눌러주세요.";
     showToast("사진이 추가되었습니다.");
     document.querySelector("#vehicleNumber")?.focus();
   } catch {
@@ -1207,9 +1077,6 @@ function removePhoto() {
     preview.innerHTML = "";
     preview.classList.remove("show");
   }
-  const status = document.querySelector("#plateScanStatus");
-  if (status) status.textContent = "";
-  document.querySelector("#scanLocalButton")?.classList.add("hidden");
   removeButton?.classList.add("hidden");
   showToast("사진을 삭제했습니다.");
 }
@@ -1414,14 +1281,6 @@ function attachEvents() {
 
   const removePhotoButton = document.querySelector("[data-action='remove-photo']");
   if (removePhotoButton) removePhotoButton.addEventListener("click", removePhoto);
-
-  const scanLocalButton = document.querySelector("[data-action='scan-photo-local']");
-  if (scanLocalButton) {
-    scanLocalButton.addEventListener("click", () => {
-      const dataUrl = document.querySelector("#photoDataUrl")?.value;
-      scanPlateFromPhoto(dataUrl);
-    });
-  }
 
   const vehicleInput = document.querySelector("#vehicleNumber");
   if (vehicleInput) vehicleInput.addEventListener("input", updateVehicleHistory);

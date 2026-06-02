@@ -18,11 +18,7 @@ const checks = [
   ["photo gallery action", files.app.includes("data-action=\"choose-photo\"")],
   ["photo saved with log", files.app.includes("photoDataUrl: String(data.get(\"photoDataUrl\")")],
   ["photo shown in detail", files.app.includes("detail-photo")],
-  ["photo plate scan", files.app.includes("scanPlateFromPhoto") && files.app.includes("cleanPlateText") && files.app.includes("tesseract.js")],
-  ["server OCR removed", !/PLATE_OCR_ENDPOINT|recognizePlateWithServer|scan-photo-server|server-ocr|서버 OCR|서버 번호판|korean-motorcycle/.test(files.app + files.css)],
-  ["plate scan is optional", files.app.includes("data-action=\"scan-photo-local\"")],
-  ["plate korean digit parsing", files.app.includes("normalizePlateOcrText") && files.app.includes("plateScore") && files.app.includes("[가-힣]{1,10}\\d{4}")],
-  ["plate image enhancement", files.app.includes("enhancePlateImage") && files.app.includes("tessedit_pageseg_mode")],
+  ["OCR removed", !/Tesseract|tesseract|scanPlate|cleanPlate|normalizePlate|plateScore|enhancePlate|scan-photo-local|scan-photo-server|OCR|ocr/.test(files.app + files.css + files.html)],
   ["plate helper input", files.app.includes("번호판 빠른 입력") && files.app.includes("data-plate-token") && files.app.includes("replacePlateDigits")],
   ["photo before vehicle field", files.app.indexOf("photo-box") < files.app.indexOf("for=\"vehicleNumber\"")],
   ["quick save before inventory", files.app.indexOf("quick-save-actions") < files.app.indexOf("사용 부품 / 재고 차감")],
@@ -44,7 +40,7 @@ const checks = [
   ["back four search", files.app.includes("endsWith(digits.slice(-4))")],
   ["daily close summary", files.app.includes("일일 마감 요약") && files.app.includes("partsSummary")],
   ["stock warning styles", files.css.includes(".stock-danger") && files.css.includes(".stock-warning")],
-  ["service worker cache bumped", files.sw.includes("motolog-pwa-v12")],
+  ["service worker cache bumped", files.sw.includes("motolog-pwa-v13")],
 ];
 
 const failed = checks.filter(([, ok]) => !ok);
