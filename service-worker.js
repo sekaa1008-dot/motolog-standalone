@@ -1,4 +1,4 @@
-const CACHE_NAME = "motolog-pwa-v13";
+const CACHE_NAME = "motolog-pwa-v14";
 const ASSETS = [
   "./",
   "./index.html",

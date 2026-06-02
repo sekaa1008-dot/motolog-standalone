@@ -19,7 +19,8 @@ const checks = [
   ["photo saved with log", files.app.includes("photoDataUrl: String(data.get(\"photoDataUrl\")")],
   ["photo shown in detail", files.app.includes("detail-photo")],
   ["OCR removed", !/Tesseract|tesseract|scanPlate|cleanPlate|normalizePlate|plateScore|enhancePlate|scan-photo-local|scan-photo-server|OCR|ocr/.test(files.app + files.css + files.html)],
-  ["plate helper input", files.app.includes("번호판 빠른 입력") && files.app.includes("data-plate-token") && files.app.includes("replacePlateDigits")],
+  ["plate helper removed", !/번호판 빠른 입력|data-plate|plate-helper|plateDigits|applyPlateToken|replacePlateDigits|deletePlateChar|plate-token|plate-chip|plate-digits/.test(files.app + files.css)],
+  ["vehicle direct input", files.app.includes("id=\"vehicleNumber\"") && files.app.includes("name=\"vehicleNumber\"")],
   ["photo before vehicle field", files.app.indexOf("photo-box") < files.app.indexOf("for=\"vehicleNumber\"")],
   ["quick save before inventory", files.app.indexOf("quick-save-actions") < files.app.indexOf("사용 부품 / 재고 차감")],
   ["PWA manifest linked", files.html.includes("manifest.webmanifest")],
@@ -40,7 +41,7 @@ const checks = [
   ["back four search", files.app.includes("endsWith(digits.slice(-4))")],
   ["daily close summary", files.app.includes("일일 마감 요약") && files.app.includes("partsSummary")],
   ["stock warning styles", files.css.includes(".stock-danger") && files.css.includes(".stock-warning")],
-  ["service worker cache bumped", files.sw.includes("motolog-pwa-v13")],
+  ["service worker cache bumped", files.sw.includes("motolog-pwa-v14")],
 ];
 
 const failed = checks.filter(([, ok]) => !ok);
